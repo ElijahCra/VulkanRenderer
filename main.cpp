@@ -1,6 +1,7 @@
 #define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
 
+#include <GLFW/glfw3.h>
+#include <vulkan/vulkan.h>
 #include <iostream>
 #include <fstream>
 #include <stdexcept>
@@ -12,6 +13,13 @@
 #include <limits>
 #include <optional>
 #include <set>
+
+
+#if defined(__APPLE__)
+  const bool macOS = true;
+#else
+  const bool macOS = false;
+#endif
 
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
@@ -395,8 +403,14 @@ class HelloTriangleApplication {
   }
 
   void createGraphicsPipeline() {
-    auto vertShaderCode = readFile("shaders/vert.spv");
-    auto fragShaderCode = readFile("shaders/frag.spv");
+    if (macOS) {
+      auto vertShaderCode = readFile("../shaders/vert.spv");
+      auto fragShaderCode = readFile("../shaders/frag.spv");
+    } else {
+      auto vertShaderCode = readFile("shaders/vert.spv");
+      auto fragShaderCode = readFile("shaders/frag.spv");
+    }
+
 
     VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
     VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
