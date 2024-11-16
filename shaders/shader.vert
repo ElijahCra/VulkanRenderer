@@ -1,20 +1,26 @@
 #version 450
 
+layout(location = 0) in vec2 inPos;
+layout(location = 1) in vec3 inColor;
+
 layout(location = 0) out vec3 fragColor;
 
-vec2 positions[3] = vec2[](
-    vec2(0.0, -0.5),
-    vec2(0.5, 0.5),
-    vec2(-0.5, 0.5)
-);
-
-vec3 colors[3] = vec3[](
-    vec3(1.0, 0.0, 0.0),
-    vec3(0.0, 1.0, 0.0),
-    vec3(0.0, 0.0, 1.0)
-);
+const int GRID_WIDTH = 10;
+const int GRID_HEIGHT = 10;
 
 void main() {
-    gl_Position = vec4(positions[gl_VertexIndex], 0.0, 1.0);
-    fragColor = colors[gl_VertexIndex];
+    int gridX = gl_InstanceIndex % GRID_WIDTH;
+    int gridY = gl_InstanceIndex / GRID_WIDTH;
+
+    float xOffset = (float(gridX) - float(GRID_WIDTH - 1) / 2.0) * 1.5;
+    float yOffset = (float(gridY) - float(GRID_HEIGHT - 1) / 2.0) * sqrt(3.0);
+
+    if (gridY % 2 == 1) {
+        xOffset += 0.75;
+    }
+
+    vec2 pos = inPos * 0.1 + vec2(xOffset * 0.1, yOffset * 0.084);
+
+    gl_Position = vec4(pos, 0.0, 1.0);
+    fragColor = inColor;
 }
