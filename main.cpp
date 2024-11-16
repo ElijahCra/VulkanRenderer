@@ -746,12 +746,8 @@ class HelloTriangleApplication {
 
     // Outer hexagon vertices
     for (int i = 0; i < 6; ++i) {
-      float angle;
-      if (i < 1 || i > 5) {
-        angle = i * angleIncrement+rotationAngle;
-      } else {
-        angle = i * angleIncrement+rotationAngle;
-      }
+      float angle = i * angleIncrement+rotationAngle;
+
       float x = radius_outer * cos(angle);
       float y = radius_outer * sin(angle);
       vertices.push_back({{x, y}, {0.0f, 0.0f, 0.0f}});  // Border color (black)
@@ -769,12 +765,7 @@ class HelloTriangleApplication {
     // Inner hexagon vertices
     const auto baseIndexInner = static_cast<uint16_t>(vertices.size());
     for (int i = 0; i < 6; ++i) {
-      float angle;
-      if (i < 1 || i > 5) {
-        angle = i * angleIncrement+rotationAngle;
-      } else {
-        angle = i * angleIncrement+rotationAngle;
-      }
+      float angle = i * angleIncrement+rotationAngle;
       float x = radius_inner * cos(angle);
       float y = radius_inner * sin(angle);
       vertices.push_back({{x, y}, {0.293f, 0.711f, 0.129f}});  // Fill color (e.g., teal)
@@ -1132,15 +1123,15 @@ class HelloTriangleApplication {
     cameraPos.z = radius * sin(phi) * cos(theta);
 
     ubo.view = glm::lookAt(
-        cameraPos, // Elevated camera position
-        glm::vec3(0.0f, 0.0f, 0.0f),    // Look at the origin
-        glm::vec3(0.0f, 1.0f, 0.0f));   // Up vector
+        cameraPos, // viewpoint
+        glm::vec3(0.0f, 0.0f, 0.0f),    //origin
+        glm::vec3(0.0f, 1.0f, 0.0f));   //Up vector
 
     ubo.proj = glm::perspective(glm::radians(fov),
                                 swapChainExtent.width / (float)swapChainExtent.height,
-                                0.1f, 500.0f); // Increase far plane
-    std::cout << "\n Camera Position: (" << cameraPos.x << ", " << cameraPos.y << ", " << cameraPos.z << ")\n";
-    std::cout << "FOV: " << fov << "\n";
+                                0.1f, 500.0f);
+    //std::cout << "\n Camera Position: (" << cameraPos.x << ", " << cameraPos.y << ", " << cameraPos.z << ")\n";
+    //std::cout << "FOV: " << fov << "\n";
 
     void* data;
     vkMapMemory(device, uniformBuffersMemory[currentImage], 0, sizeof(ubo), 0, &data);
