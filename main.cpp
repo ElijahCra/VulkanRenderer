@@ -128,8 +128,8 @@ class HelloTriangleApplication {
   const int instanceCount = GRID_WIDTH * GRID_HEIGHT;
 
   float angle = 0.0f;
-  float radius = 5.0f;
-  float fov = 45.0f;
+  float radius = 20.0f;
+  float fov = 60.0f;
 
   struct UniformBufferObject {
     glm::mat4 model;
@@ -1053,10 +1053,8 @@ class HelloTriangleApplication {
     } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
       throw std::runtime_error("failed to acquire swap chain image!");
     }
-
-    vkResetFences(device, 1, &inFlightFences[currentFrame]);
-
     updateUniformBuffer(currentFrame);
+    vkResetFences(device, 1, &inFlightFences[currentFrame]);
 
     vkResetCommandBuffer(commandBuffers[currentFrame], /*VkCommandBufferResetFlagBits*/ 0);
     recordCommandBuffer(commandBuffers[currentFrame], imageIndex,currentFrame);
@@ -1106,18 +1104,30 @@ class HelloTriangleApplication {
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
   }
 
-void updateUniformBuffer(uint32_t currentImage) {
+  void updateUniformBuffer(uint32_t currentImage) {
     UniformBufferObject ubo{};
-    ubo.model = glm::mat4(1.0f);
-    ubo.view = glm::mat4(1.0f); // No camera transformation
-    ubo.proj = glm::mat4(1.0f); // No projection
+    ubo.model = glm::rotate(glm::mat4(1.0f), angle, glm::vec3(0.0f, 1.0f, 0.0f));
+
+    // Move the camera to a higher position to look down at the grid
+    ubo.view = glm::lookAt(
+        glm::vec3(radius * sin(angle), radius * 0.5f, radius * cos(angle)), // Elevated camera position
+        glm::vec3(0.0f, 0.0f, 0.0f),    // Look at the origin
+        glm::vec3(0.0f, 1.0f, 0.0f));   // Up vector
+
+    glm::vec3 cameraPos = glm::vec3(radius * sin(angle), radius * 0.5f, radius * cos(angle));
+    std::cout << "Camera Position: (" << cameraPos.x << ", " << cameraPos.y << ", " << cameraPos.z << ")\n";
+    std::cout << "FOV: " << fov << "\n";
+
+    ubo.proj = glm::perspective(glm::radians(fov),
+                                swapChainExtent.width / (float)swapChainExtent.height,
+                                0.1f, 500.0f); // Increase far plane
+    ubo.proj[1][1] *= -1;
 
     void* data;
     vkMapMemory(device, uniformBuffersMemory[currentImage], 0, sizeof(ubo), 0, &data);
     memcpy(data, &ubo, sizeof(ubo));
     vkUnmapMemory(device, uniformBuffersMemory[currentImage]);
-}
-
+  }
 
   VkShaderModule createShaderModule(const std::vector<char>& code) {
     VkShaderModuleCreateInfo createInfo{};
