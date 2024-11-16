@@ -14,6 +14,8 @@
 #include <optional>
 #include <set>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include "Utils.cpp"
 
 #if defined(__APPLE__)
 const bool macOS = true;
@@ -40,38 +42,6 @@ const bool enableValidationLayers = false;
 const bool enableValidationLayers = true;
 #endif
 
-VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
-                                      const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger) {
-  auto func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
-  if (func != nullptr) {
-    return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
-  } else {
-    return VK_ERROR_EXTENSION_NOT_PRESENT;
-  }
-}
-
-void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger,
-                                   const VkAllocationCallbacks* pAllocator) {
-  auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
-  if (func != nullptr) {
-    func(instance, debugMessenger, pAllocator);
-  }
-}
-
-struct QueueFamilyIndices {
-  std::optional<uint32_t> graphicsFamily;
-  std::optional<uint32_t> presentFamily;
-
-  bool isComplete() {
-    return graphicsFamily.has_value() && presentFamily.has_value();
-  }
-};
-
-struct SwapChainSupportDetails {
-  VkSurfaceCapabilitiesKHR capabilities;
-  std::vector<VkSurfaceFormatKHR> formats;
-  std::vector<VkPresentModeKHR> presentModes;
-};
 
 struct Vertex {
   glm::vec2 pos;
@@ -157,6 +127,24 @@ class HelloTriangleApplication {
   const int GRID_HEIGHT = 10;
   const int instanceCount = GRID_WIDTH * GRID_HEIGHT;
 
+  float angle = 0.0f;
+  float radius = 5.0f;
+  float fov = 45.0f;
+
+  struct UniformBufferObject {
+    glm::mat4 model;
+    glm::mat4 view;
+    glm::mat4 proj;
+  };
+
+  std::vector<VkBuffer> uniformBuffers;
+  std::vector<VkDeviceMemory> uniformBuffersMemory;
+
+  VkDescriptorSetLayout descriptorSetLayout;
+  VkDescriptorPool descriptorPool;
+  std::vector<VkDescriptorSet> descriptorSets;
+
+
   void initWindow() {
     glfwInit();
 
@@ -165,7 +153,34 @@ class HelloTriangleApplication {
     window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
     glfwSetWindowUserPointer(window, this);
     glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+    glfwSetKeyCallback(window, keyCallback);
   }
+
+  static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
+    app->handleKeyInput(key, action);
+  }
+
+  void handleKeyInput(int key, int action) {
+    if (action == GLFW_PRESS || action == GLFW_REPEAT) {
+      const float angleIncrement = 0.05f;
+      const float radiusIncrement = 0.1f;
+      const float fovIncrement = 1.0f;
+
+      if (key == GLFW_KEY_LEFT) {
+        angle -= angleIncrement;
+      } else if (key == GLFW_KEY_RIGHT) {
+        angle += angleIncrement;
+      } else if (key == GLFW_KEY_UP) {
+        fov -= fovIncrement;
+        if (fov < 1.0f) fov = 1.0f;
+      } else if (key == GLFW_KEY_DOWN) {
+        fov += fovIncrement;
+        if (fov > 45.0f) fov = 45.0f;
+      }
+    }
+  }
+
 
   static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
     auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
@@ -181,12 +196,16 @@ class HelloTriangleApplication {
     createSwapChain();
     createImageViews();
     createRenderPass();
+    createDescriptorSetLayout();
     createGraphicsPipeline();
     createFramebuffers();
     createCommandPool();
     generateHexagonData();
     createVertexBuffer();
     createIndexBuffer();
+    createUniformBuffers();
+    createDescriptorPool();
+    createDescriptorSets();
     createCommandBuffers();
     createSyncObjects();
   }
@@ -225,11 +244,15 @@ class HelloTriangleApplication {
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
 
     vkDestroyRenderPass(device, renderPass, nullptr);
+    vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
+    vkDestroyDescriptorPool(device, descriptorPool, nullptr);
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
       vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
       vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
       vkDestroyFence(device, inFlightFences[i], nullptr);
+      vkDestroyBuffer(device, uniformBuffers[i], nullptr);
+      vkFreeMemory(device, uniformBuffersMemory[i], nullptr);
     }
 
     vkDestroyCommandPool(device, commandPool, nullptr);
@@ -523,6 +546,25 @@ class HelloTriangleApplication {
     }
   }
 
+  void createDescriptorSetLayout() {
+    VkDescriptorSetLayoutBinding uboLayoutBinding{};
+    uboLayoutBinding.binding = 0;
+    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    uboLayoutBinding.descriptorCount = 1;
+    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    uboLayoutBinding.pImmutableSamplers = nullptr;
+
+    VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = 1;
+    layoutInfo.pBindings = &uboLayoutBinding;
+
+    if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
+      throw std::runtime_error("failed to create descriptor set layout!");
+    }
+  }
+
+
   void createGraphicsPipeline() {
     std::vector<char> vertShaderCode;
     std::vector<char> fragShaderCode;
@@ -613,7 +655,8 @@ class HelloTriangleApplication {
 
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 0;
+    pipelineLayoutInfo.setLayoutCount = 1; // Update this line
+    pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout; // Add this line
     pipelineLayoutInfo.pushConstantRangeCount = 0;
 
     if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
@@ -802,6 +845,96 @@ class HelloTriangleApplication {
     vkUnmapMemory(device, indexBufferMemory);
   }
 
+  void createUniformBuffers() {
+    VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+
+    uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+    uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
+
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+      createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                   uniformBuffers[i], uniformBuffersMemory[i]);
+    }
+  }
+
+  void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties,
+                  VkBuffer& buffer, VkDeviceMemory& bufferMemory) {
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = size;
+    bufferInfo.usage = usage;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    if (vkCreateBuffer(device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
+      throw std::runtime_error("failed to create buffer!");
+    }
+
+    VkMemoryRequirements memRequirements;
+    vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
+
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
+
+    if (vkAllocateMemory(device, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
+      throw std::runtime_error("failed to allocate buffer memory!");
+    }
+
+    vkBindBufferMemory(device, buffer, bufferMemory, 0);
+  }
+
+
+  void createDescriptorPool() {
+    VkDescriptorPoolSize poolSize{};
+    poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    poolSize.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.poolSizeCount = 1;
+    poolInfo.pPoolSizes = &poolSize;
+    poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+    if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+      throw std::runtime_error("failed to create descriptor pool!");
+    }
+  }
+
+  void createDescriptorSets() {
+    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = descriptorPool;
+    allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    allocInfo.pSetLayouts = layouts.data();
+
+    descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
+    if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
+      throw std::runtime_error("failed to allocate descriptor sets!");
+    }
+
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+      VkDescriptorBufferInfo bufferInfo{};
+      bufferInfo.buffer = uniformBuffers[i];
+      bufferInfo.offset = 0;
+      bufferInfo.range = sizeof(UniformBufferObject);
+
+      VkWriteDescriptorSet descriptorWrite{};
+      descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+      descriptorWrite.dstSet = descriptorSets[i];
+      descriptorWrite.dstBinding = 0;
+      descriptorWrite.dstArrayElement = 0;
+      descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+      descriptorWrite.descriptorCount = 1;
+      descriptorWrite.pBufferInfo = &bufferInfo;
+
+      vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
+    }
+  }
+
+
   uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
     VkPhysicalDeviceMemoryProperties memProperties;
     vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
@@ -830,7 +963,7 @@ class HelloTriangleApplication {
     }
   }
 
-  void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
+  void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, uint32_t currentFrame) {
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
@@ -852,6 +985,9 @@ class HelloTriangleApplication {
     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
+                            0, 1, &descriptorSets[currentFrame], 0, nullptr);
 
     VkViewport viewport{};
     viewport.x = 0.0f;
@@ -920,8 +1056,10 @@ class HelloTriangleApplication {
 
     vkResetFences(device, 1, &inFlightFences[currentFrame]);
 
+    updateUniformBuffer(currentFrame);
+
     vkResetCommandBuffer(commandBuffers[currentFrame], /*VkCommandBufferResetFlagBits*/ 0);
-    recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
+    recordCommandBuffer(commandBuffers[currentFrame], imageIndex,currentFrame);
 
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -964,8 +1102,22 @@ class HelloTriangleApplication {
       throw std::runtime_error("failed to present swap chain image!");
     }
 
+
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
   }
+
+void updateUniformBuffer(uint32_t currentImage) {
+    UniformBufferObject ubo{};
+    ubo.model = glm::mat4(1.0f);
+    ubo.view = glm::mat4(1.0f); // No camera transformation
+    ubo.proj = glm::mat4(1.0f); // No projection
+
+    void* data;
+    vkMapMemory(device, uniformBuffersMemory[currentImage], 0, sizeof(ubo), 0, &data);
+    memcpy(data, &ubo, sizeof(ubo));
+    vkUnmapMemory(device, uniformBuffersMemory[currentImage]);
+}
+
 
   VkShaderModule createShaderModule(const std::vector<char>& code) {
     VkShaderModuleCreateInfo createInfo{};

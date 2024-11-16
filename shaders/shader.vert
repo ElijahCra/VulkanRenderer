@@ -8,6 +8,12 @@ layout(location = 0) out vec3 fragColor;
 const int GRID_WIDTH = 10;
 const int GRID_HEIGHT = 10;
 
+layout(binding = 0) uniform UniformBufferObject {
+    mat4 model;
+    mat4 view;
+    mat4 proj;
+} ubo;
+
 void main() {
     int gridX = gl_InstanceIndex % GRID_WIDTH;
     int gridY = gl_InstanceIndex / GRID_WIDTH;
@@ -21,6 +27,7 @@ void main() {
 
     vec2 pos = inPos * 0.1 + vec2(xOffset * 0.108, yOffset * 0.084);
 
-    gl_Position = vec4(pos, 0.0, 1.0);
+    // Apply transformations
+    gl_Position = ubo.proj * ubo.view * ubo.model * vec4(pos, 0.0, 1.0);
     fragColor = inColor;
 }
