@@ -684,10 +684,16 @@ class HelloTriangleApplication {
     float radius_outer = 1.0f;
     float radius_inner = 0.9f;
     float angleIncrement = glm::radians(60.0f);
+    float rotationAngle = glm::radians(5.0f);
 
     // Outer hexagon vertices
     for (int i = 0; i < 6; ++i) {
-      float angle = i * angleIncrement;
+      float angle;
+      if (i < 1 || i > 5) {
+        angle = i * angleIncrement+rotationAngle;
+      } else {
+        angle = i * angleIncrement+rotationAngle;
+      }
       float x = radius_outer * cos(angle);
       float y = radius_outer * sin(angle);
       vertices.push_back({{x, y}, {0.0f, 0.0f, 0.0f}});  // Border color (black)
@@ -705,7 +711,12 @@ class HelloTriangleApplication {
     // Inner hexagon vertices
     const auto baseIndexInner = static_cast<uint16_t>(vertices.size());
     for (int i = 0; i < 6; ++i) {
-      const float angle = static_cast<float>(i) * angleIncrement;
+      float angle;
+      if (i < 1 || i > 5) {
+        angle = i * angleIncrement+rotationAngle;
+      } else {
+        angle = i * angleIncrement+rotationAngle;
+      }
       float x = radius_inner * cos(angle);
       float y = radius_inner * sin(angle);
       vertices.push_back({{x, y}, {0.293f, 0.711f, 0.129f}});  // Fill color (e.g., teal)
