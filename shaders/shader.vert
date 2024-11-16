@@ -25,9 +25,9 @@ void main() {
         xOffset += 0.75;
     }
 
-    // Increase scaling factors
-    vec2 pos = inPos * 0.5 + vec2(xOffset * 0.5, yOffset * 0.5);
+    vec2 pos = inPos * 0.1 + vec2(xOffset * 0.108, yOffset * 0.084);
 
+    // Apply transformations
     gl_Position = ubo.proj * ubo.view * ubo.model * vec4(pos, 0.0, 1.0);
     fragColor = inColor;
 }

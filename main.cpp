@@ -127,9 +127,10 @@ class HelloTriangleApplication {
   const int GRID_HEIGHT = 10;
   const int instanceCount = GRID_WIDTH * GRID_HEIGHT;
 
-  float angle = 0.0f;
+  float cameraAngleX = 0.0f;
+  float cameraAngleY = glm::radians(90.0f);
   float radius = 20.0f;
-  float fov = 60.0f;
+  float fov = 5.0f;
 
   struct UniformBufferObject {
     glm::mat4 model;
@@ -154,6 +155,20 @@ class HelloTriangleApplication {
     glfwSetWindowUserPointer(window, this);
     glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
     glfwSetKeyCallback(window, keyCallback);
+    glfwSetScrollCallback(window, scroll_callback);
+  }
+
+  static void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
+  {
+    auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
+    app->handleScrollInput(xoffset, yoffset);
+  }
+
+  void handleScrollInput(double xoffset, double yoffset) {
+      const float fovIncrement = 1.0f;
+      fov += fovIncrement*yoffset;
+      if (fov > 45.0f) fov = 45.0f;
+      if (fov < 1) fov = 1.0f;
   }
 
   static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
@@ -163,20 +178,20 @@ class HelloTriangleApplication {
 
   void handleKeyInput(int key, int action) {
     if (action == GLFW_PRESS || action == GLFW_REPEAT) {
-      const float angleIncrement = 0.05f;
-      const float radiusIncrement = 0.1f;
-      const float fovIncrement = 1.0f;
+      constexpr float angleIncrement = 0.1f;
 
       if (key == GLFW_KEY_LEFT) {
-        angle -= angleIncrement;
+        cameraAngleX -= angleIncrement;
+        if (cameraAngleX < -glm::pi<float>()/2.0f + 0.01f) cameraAngleX = -glm::pi<float>()/2.0f + 0.01f;
       } else if (key == GLFW_KEY_RIGHT) {
-        angle += angleIncrement;
+        cameraAngleX += angleIncrement;
+        if (cameraAngleX > glm::pi<float>()/2.0f - 0.01f) cameraAngleX = glm::pi<float>()/2.0f - 0.01f;
       } else if (key == GLFW_KEY_UP) {
-        fov -= fovIncrement;
-        if (fov < 1.0f) fov = 1.0f;
+        cameraAngleY += angleIncrement;
+        if (cameraAngleY > glm::pi<float>() - 0.01f) cameraAngleY = glm::pi<float>() - 0.01f;
       } else if (key == GLFW_KEY_DOWN) {
-        fov += fovIncrement;
-        if (fov > 45.0f) fov = 45.0f;
+        cameraAngleY -= angleIncrement;
+        if (cameraAngleY < 0.01f) cameraAngleY = 0.01f;
       }
     }
   }
@@ -1106,22 +1121,26 @@ class HelloTriangleApplication {
 
   void updateUniformBuffer(uint32_t currentImage) {
     UniformBufferObject ubo{};
-    ubo.model = glm::rotate(glm::mat4(1.0f), angle, glm::vec3(0.0f, 1.0f, 0.0f));
+    ubo.model = glm::mat4(1.0f); // No rotation
 
-    // Move the camera to a higher position to look down at the grid
+    float theta = cameraAngleX; // Azimuthal angle
+    float phi = cameraAngleY;   // Polar angle
+
+    glm::vec3 cameraPos;
+    cameraPos.x = radius * sin(phi) * sin(theta);
+    cameraPos.y = radius * cos(phi);
+    cameraPos.z = radius * sin(phi) * cos(theta);
+
     ubo.view = glm::lookAt(
-        glm::vec3(radius * sin(angle), radius * 0.5f, radius * cos(angle)), // Elevated camera position
+        cameraPos, // Elevated camera position
         glm::vec3(0.0f, 0.0f, 0.0f),    // Look at the origin
         glm::vec3(0.0f, 1.0f, 0.0f));   // Up vector
-
-    glm::vec3 cameraPos = glm::vec3(radius * sin(angle), radius * 0.5f, radius * cos(angle));
-    std::cout << "Camera Position: (" << cameraPos.x << ", " << cameraPos.y << ", " << cameraPos.z << ")\n";
-    std::cout << "FOV: " << fov << "\n";
 
     ubo.proj = glm::perspective(glm::radians(fov),
                                 swapChainExtent.width / (float)swapChainExtent.height,
                                 0.1f, 500.0f); // Increase far plane
-    ubo.proj[1][1] *= -1;
+    std::cout << "\n Camera Position: (" << cameraPos.x << ", " << cameraPos.y << ", " << cameraPos.z << ")\n";
+    std::cout << "FOV: " << fov << "\n";
 
     void* data;
     vkMapMemory(device, uniformBuffersMemory[currentImage], 0, sizeof(ubo), 0, &data);
