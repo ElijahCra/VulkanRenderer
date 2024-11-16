@@ -684,7 +684,7 @@ class HelloTriangleApplication {
     float radius_outer = 1.0f;
     float radius_inner = 0.9f;
     float angleIncrement = glm::radians(60.0f);
-    float rotationAngle = glm::radians(5.0f);
+    float rotationAngle = glm::radians(30.0f);
 
     // Outer hexagon vertices
     for (int i = 0; i < 6; ++i) {

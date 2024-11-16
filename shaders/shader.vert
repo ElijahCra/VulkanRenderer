@@ -19,7 +19,7 @@ void main() {
         xOffset += 0.75;
     }
 
-    vec2 pos = inPos * 0.1 + vec2(xOffset * 0.1, yOffset * 0.084);
+    vec2 pos = inPos * 0.1 + vec2(xOffset * 0.108, yOffset * 0.084);
 
     gl_Position = vec4(pos, 0.0, 1.0);
     fragColor = inColor;
