@@ -1,6 +1,6 @@
 #version 450
 
-layout(location = 0) in vec2 inPos;
+layout(location = 0) in vec3 inPos;
 layout(location = 1) in vec3 inColor;
 
 layout(location = 0) out vec3 fragColor;
@@ -25,9 +25,10 @@ void main() {
         xOffset += 0.75;
     }
 
-    vec2 pos = inPos * 0.1 + vec2(xOffset * 0.108, yOffset * 0.084);
+    vec3 pos = inPos * 0.1;  // Scale the position
+    pos.x += xOffset * 0.108; // Adjust x position
+    pos.y += yOffset * 0.084; // Adjust z position
 
-    // Apply transformations
-    gl_Position = ubo.proj * ubo.view * ubo.model * vec4(pos, 0.0, 1.0);
+    gl_Position = ubo.proj * ubo.view * ubo.model * vec4(pos, 1.0);
     fragColor = inColor;
 }

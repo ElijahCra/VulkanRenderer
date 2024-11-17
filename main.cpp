@@ -44,7 +44,7 @@ const bool enableValidationLayers = true;
 
 
 struct Vertex {
-  glm::vec2 pos;
+  glm::vec3 pos;
   glm::vec3 color;
 
   static VkVertexInputBindingDescription getBindingDescription() {
@@ -60,7 +60,7 @@ struct Vertex {
 
     attributeDescriptions[0].binding = 0;
     attributeDescriptions[0].location = 0;
-    attributeDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+    attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
     attributeDescriptions[0].offset = offsetof(Vertex, pos);
 
     attributeDescriptions[1].binding = 0;
@@ -123,8 +123,8 @@ class HelloTriangleApplication {
   VkBuffer indexBuffer;
   VkDeviceMemory indexBufferMemory;
 
-  const int GRID_WIDTH = 10;
-  const int GRID_HEIGHT = 10;
+  const int GRID_WIDTH = 1;
+  const int GRID_HEIGHT = 1;
   const int instanceCount = GRID_WIDTH * GRID_HEIGHT;
 
   float cameraAngleX = 0.0f;
@@ -182,10 +182,9 @@ class HelloTriangleApplication {
 
       if (key == GLFW_KEY_LEFT) {
         cameraAngleX -= angleIncrement;
-        if (cameraAngleX < -glm::pi<float>()/2.0f + 0.01f) cameraAngleX = -glm::pi<float>()/2.0f + 0.01f;
+
       } else if (key == GLFW_KEY_RIGHT) {
         cameraAngleX += angleIncrement;
-        if (cameraAngleX > glm::pi<float>()/2.0f - 0.01f) cameraAngleX = glm::pi<float>()/2.0f - 0.01f;
       } else if (key == GLFW_KEY_UP) {
         cameraAngleY += angleIncrement;
         if (cameraAngleY > glm::pi<float>() - 0.01f) cameraAngleY = glm::pi<float>() - 0.01f;
@@ -213,6 +212,7 @@ class HelloTriangleApplication {
     createRenderPass();
     createDescriptorSetLayout();
     createGraphicsPipeline();
+    createDepthResources();
     createFramebuffers();
     createCommandPool();
     generateHexagonData();
@@ -244,6 +244,12 @@ class HelloTriangleApplication {
     }
 
     vkDestroySwapchainKHR(device, swapChain, nullptr);
+    vkDestroyImageView(device, depthImageView, nullptr);
+    vkDestroyImage(device, depthImage, nullptr);
+    vkFreeMemory(device, depthImageMemory, nullptr);
+    vkDestroyPipeline(device, graphicsPipeline, nullptr);      // Add this line
+    vkDestroyPipelineLayout(device, pipelineLayout, nullptr);  // Add this line
+    vkDestroyRenderPass(device, renderPass, nullptr);
   }
 
   void cleanup() {
@@ -300,6 +306,9 @@ class HelloTriangleApplication {
 
     createSwapChain();
     createImageViews();
+    createRenderPass();       // Add this line
+    createGraphicsPipeline(); // Add this line
+    createDepthResources();   // Add this line
     createFramebuffers();
   }
 
@@ -534,6 +543,21 @@ class HelloTriangleApplication {
     colorAttachmentRef.attachment = 0;
     colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
+    VkAttachmentDescription depthAttachment{};
+    depthAttachment.format = findDepthFormat();
+    depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentReference depthAttachmentRef{};
+    depthAttachmentRef.attachment = 1; // Assuming depth attachment is at index 1
+    depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+
     VkSubpassDescription subpass{};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.colorAttachmentCount = 1;
@@ -549,8 +573,12 @@ class HelloTriangleApplication {
 
     VkRenderPassCreateInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    renderPassInfo.attachmentCount = 1;
-    renderPassInfo.pAttachments = &colorAttachment;
+
+    std::array<VkAttachmentDescription, 2> attachments = { colorAttachment, depthAttachment };
+
+    renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+    renderPassInfo.pAttachments = attachments.data();
+
     renderPassInfo.subpassCount = 1;
     renderPassInfo.pSubpasses = &subpass;
     renderPassInfo.dependencyCount = 1;
@@ -560,6 +588,106 @@ class HelloTriangleApplication {
       throw std::runtime_error("failed to create render pass!");
     }
   }
+
+  void createDepthResources() {
+    VkFormat depthFormat = findDepthFormat();
+    createImage(swapChainExtent.width, swapChainExtent.height, depthFormat,
+                VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage, depthImageMemory);
+    depthImageView = createImageView(depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
+  }
+
+  VkFormat findDepthFormat() {
+    return findSupportedFormat(
+        {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT},
+        VK_IMAGE_TILING_OPTIMAL,
+        VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+    );
+  }
+
+
+  void createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling,
+                 VkImageUsageFlags usage, VkMemoryPropertyFlags properties,
+                 VkImage& image, VkDeviceMemory& imageMemory) {
+    VkImageCreateInfo imageInfo{};
+    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    imageInfo.imageType = VK_IMAGE_TYPE_2D;  // For depth image
+    imageInfo.extent.width = width;
+    imageInfo.extent.height = height;
+    imageInfo.extent.depth = 1;  // 2D image, depth is 1
+    imageInfo.mipLevels = 1;     // No mipmapping
+    imageInfo.arrayLayers = 1;   // Single-layered image
+    imageInfo.format = format;
+    imageInfo.tiling = tiling;
+    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    imageInfo.usage = usage;  // Should include VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    if (vkCreateImage(device, &imageInfo, nullptr, &image) != VK_SUCCESS) {
+      throw std::runtime_error("failed to create image!");
+    }
+
+    VkMemoryRequirements memRequirements;
+    vkGetImageMemoryRequirements(device, image, &memRequirements);
+
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
+
+    if (vkAllocateMemory(device, &allocInfo, nullptr, &imageMemory) != VK_SUCCESS) {
+      throw std::runtime_error("failed to allocate image memory!");
+    }
+
+    vkBindImageMemory(device, image, imageMemory, 0);
+  }
+
+  VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) {
+    VkImageViewCreateInfo viewInfo{};
+    viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    viewInfo.image = image;  // The image to create a view for
+    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    viewInfo.format = format;
+
+    viewInfo.subresourceRange.aspectMask = aspectFlags;  // e.g., VK_IMAGE_ASPECT_DEPTH_BIT
+    viewInfo.subresourceRange.baseMipLevel = 0;  // No mipmapping
+    viewInfo.subresourceRange.levelCount = 1;
+    viewInfo.subresourceRange.baseArrayLayer = 0;  // Single-layered image
+    viewInfo.subresourceRange.layerCount = 1;
+
+    VkImageView imageView;
+    if (vkCreateImageView(device, &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
+      throw std::runtime_error("failed to create texture image view!");
+    }
+
+    return imageView;
+  }
+
+  VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling,
+                             VkFormatFeatureFlags features) {
+    for (VkFormat format : candidates) {
+      VkFormatProperties props;
+      vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &props);
+
+      if (tiling == VK_IMAGE_TILING_LINEAR &&
+          (props.linearTilingFeatures & features) == features) {
+        return format;
+          } else if (tiling == VK_IMAGE_TILING_OPTIMAL &&
+                     (props.optimalTilingFeatures & features) == features) {
+            return format;
+                     }
+    }
+
+    throw std::runtime_error("failed to find supported format!");
+  }
+
+  VkImage depthImage;
+  VkDeviceMemory depthImageMemory;
+  VkImageView depthImageView;
+
+
+
 
   void createDescriptorSetLayout() {
     VkDescriptorSetLayoutBinding uboLayoutBinding{};
@@ -637,6 +765,8 @@ class HelloTriangleApplication {
     rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
     rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
     rasterizer.depthBiasEnable = VK_FALSE;
+    //rasterizer.cullMode = VK_CULL_MODE_NONE; // Disable culling for testing
+
 
     VkPipelineMultisampleStateCreateInfo multisampling{};
     multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
@@ -694,6 +824,16 @@ class HelloTriangleApplication {
     pipelineInfo.subpass = 0;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 
+    VkPipelineDepthStencilStateCreateInfo depthStencil{};
+    depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    depthStencil.depthTestEnable = VK_TRUE;
+    depthStencil.depthWriteEnable = VK_TRUE;
+    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+    depthStencil.depthBoundsTestEnable = VK_FALSE;
+    depthStencil.stencilTestEnable = VK_FALSE;
+
+    pipelineInfo.pDepthStencilState = &depthStencil;
+
     if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
       throw std::runtime_error("failed to create graphics pipeline!");
     }
@@ -706,15 +846,16 @@ class HelloTriangleApplication {
     swapChainFramebuffers.resize(swapChainImageViews.size());
 
     for (size_t i = 0; i < swapChainImageViews.size(); i++) {
-      VkImageView attachments[] = {
-          swapChainImageViews[i]
-      };
+      std::array<VkImageView, 2> attachments = {
+        swapChainImageViews[i],
+        depthImageView
+    };
 
       VkFramebufferCreateInfo framebufferInfo{};
       framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
       framebufferInfo.renderPass = renderPass;
-      framebufferInfo.attachmentCount = 1;
-      framebufferInfo.pAttachments = attachments;
+      framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+      framebufferInfo.pAttachments = attachments.data();
       framebufferInfo.width = swapChainExtent.width;
       framebufferInfo.height = swapChainExtent.height;
       framebufferInfo.layers = 1;
@@ -738,46 +879,172 @@ class HelloTriangleApplication {
     }
   }
 
-  void generateHexagonData() {
-    float radius_outer = 1.0f;
-    float radius_inner = 0.9f;
-    float angleIncrement = glm::radians(60.0f);
-    float rotationAngle = glm::radians(30.0f);
+void generateHexagonData() {
+    constexpr float radius_outer = 1.0f;
+    constexpr float radius_inner = 0.9f;
+    constexpr float rotationAngle = glm::radians(30.0f);
+    constexpr float height = 1.0f;
+    constexpr auto blackColor = glm::vec3(0.0f, 0.0f, 0.0f);
+    constexpr auto greenColor = glm::vec3(0.293f, 0.711f, 0.129f);
+    constexpr auto brownColor = glm::vec3(0.367f, 0.172f, 0.039f);
+    constexpr auto whiteColor = glm::vec3(1.0f, 1.0f, 1.0f);
 
-    // Outer hexagon vertices
-    for (int i = 0; i < 6; ++i) {
-      float angle = i * angleIncrement+rotationAngle;
+    // ======== Top Hexagon ========
 
-      float x = radius_outer * cos(angle);
-      float y = radius_outer * sin(angle);
-      vertices.push_back({{x, y}, {0.0f, 0.0f, 0.0f}});  // Border color (black)
-    }
-    vertices.push_back({{0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}});  // Center vertex for outer hexagon
-    int centerIndexOuter = 6;
+    // Inner hexagon vertices (green color)
+    const auto baseIndexInnerGreen = static_cast<uint16_t>(vertices.size());
+    generateNSidedShapeWithCenterVertices(6, radius_inner, rotationAngle, height, greenColor, vertices);
+    auto centerIndex = static_cast<uint16_t>(vertices.size() - 1);
 
-    // Outer hexagon indices
-    for (int i = 0; i < 6; ++i) {
-      indices.push_back(centerIndexOuter);
-      indices.push_back(i);
-      indices.push_back((i + 1) % 6);
-    }
-
-    // Inner hexagon vertices
-    const auto baseIndexInner = static_cast<uint16_t>(vertices.size());
-    for (int i = 0; i < 6; ++i) {
-      float angle = i * angleIncrement+rotationAngle;
-      float x = radius_inner * cos(angle);
-      float y = radius_inner * sin(angle);
-      vertices.push_back({{x, y}, {0.293f, 0.711f, 0.129f}});  // Fill color (e.g., teal)
-    }
-    vertices.push_back({{0.0f, 0.0f}, {0.293f, 0.711f, 0.129f}});  // Center vertex for inner hexagon
-    auto centerIndexInner = static_cast<uint16_t>(vertices.size() - 1);
-
-    // Inner hexagon indices
+    // Inner hexagon indices (green color)
     for (uint16_t i = 0; i < 6; ++i) {
-      indices.push_back(centerIndexInner);
-      indices.push_back(baseIndexInner + i);
-      indices.push_back(baseIndexInner + ((i + 1) % 6));
+        indices.push_back(baseIndexInnerGreen + i);
+        indices.push_back(baseIndexInnerGreen + ((i + 1) % 6));
+        indices.push_back(centerIndex);
+    }
+
+    // Inner hexagon vertices for border (black color)
+    const auto baseIndexInnerBlack = static_cast<uint16_t>(vertices.size());
+    generateNSidedShapeVertices(6, radius_inner, rotationAngle, height, blackColor, vertices);
+
+    // Outer hexagon vertices (black color)
+    const auto baseIndexOuter = static_cast<uint16_t>(vertices.size());
+    generateNSidedShapeVertices(6, radius_outer, rotationAngle, height, blackColor, vertices);
+
+    // Outer hexagon indices (border)
+    for (uint16_t i = 0; i < 6; ++i) {
+        // First triangle of the border quad
+        indices.push_back(baseIndexInnerBlack + i);
+        indices.push_back(baseIndexOuter + i);
+        indices.push_back(baseIndexOuter + ((i + 1) % 6));
+
+        // Second triangle of the border quad
+        indices.push_back(baseIndexInnerBlack + i);
+        indices.push_back(baseIndexOuter + ((i + 1) % 6));
+        indices.push_back(baseIndexInnerBlack + ((i + 1) % 6));
+    }
+
+    // ======== Bottom Hexagon ========
+
+    // Inner hexagon vertices (green color)
+    const auto baseIndexInnerGreenBot = static_cast<uint16_t>(vertices.size());
+    generateNSidedShapeWithCenterVertices(6, radius_inner, rotationAngle, -height, whiteColor, vertices);
+    auto centerIndexBot = static_cast<uint16_t>(vertices.size() - 1);
+
+    // Inner hexagon indices (green color)
+    for (uint16_t i = 0; i < 6; ++i) {
+        indices.push_back(baseIndexInnerGreenBot + i);
+        indices.push_back(centerIndexBot);
+        indices.push_back(baseIndexInnerGreenBot + ((i + 1) % 6));
+    }
+
+    // Inner hexagon vertices for border (black color)
+    const auto baseIndexInnerBlackBot = static_cast<uint16_t>(vertices.size());
+    generateNSidedShapeVertices(6, radius_inner, rotationAngle, -height, blackColor, vertices);
+
+    // Outer hexagon vertices (black color)
+    const auto baseIndexOuterBot = static_cast<uint16_t>(vertices.size());
+    generateNSidedShapeVertices(6, radius_outer, rotationAngle, -height, blackColor, vertices);
+
+    // Outer hexagon indices (border)
+    for (uint16_t i = 0; i < 6; ++i) {
+        // First triangle of the border quad
+
+        indices.push_back(baseIndexOuterBot + i);
+      indices.push_back(baseIndexInnerBlackBot + i);
+        indices.push_back(baseIndexOuterBot + ((i + 1) % 6));
+
+        // Second triangle of the border quad
+
+        indices.push_back(baseIndexOuterBot + ((i + 1) % 6));
+      indices.push_back(baseIndexInnerBlackBot + i);
+        indices.push_back(baseIndexInnerBlackBot + ((i + 1) % 6));
+    }
+
+
+    // ======== Side Faces ========
+
+    // Generate side faces between top and bottom outer hexagons
+    for (uint16_t i = 0; i < 6; ++i) {
+        // Indices of the top and bottom outer vertices
+        uint16_t topOuterCurr = baseIndexOuter + i;
+        uint16_t topOuterNext = baseIndexOuter + ((i + 1) % 6);
+        uint16_t bottomOuterCurr = baseIndexOuterBot + i;
+        uint16_t bottomOuterNext = baseIndexOuterBot + ((i + 1) % 6);
+
+        // ======== Border Vertices (Black Color) ========
+
+        // Create vertices for the border edges
+        Vertex vTopCurrEdge = vertices[topOuterCurr]; vTopCurrEdge.color = blackColor;
+        Vertex vBottomCurrEdge = vertices[bottomOuterCurr]; vBottomCurrEdge.color = blackColor;
+        Vertex vBottomNextEdge = vertices[bottomOuterNext]; vBottomNextEdge.color = blackColor;
+        Vertex vTopNextEdge = vertices[topOuterNext]; vTopNextEdge.color = blackColor;
+
+        // Add edge vertices to the vertex buffer
+        uint16_t idxTopCurrEdge = static_cast<uint16_t>(vertices.size()); vertices.push_back(vTopCurrEdge);
+        uint16_t idxBottomCurrEdge = static_cast<uint16_t>(vertices.size()); vertices.push_back(vBottomCurrEdge);
+        uint16_t idxBottomNextEdge = static_cast<uint16_t>(vertices.size()); vertices.push_back(vBottomNextEdge);
+        uint16_t idxTopNextEdge = static_cast<uint16_t>(vertices.size()); vertices.push_back(vTopNextEdge);
+
+        // Create indices for the border edges (two triangles)
+        indices.push_back(idxTopCurrEdge);
+        indices.push_back(idxBottomCurrEdge);
+        indices.push_back(idxBottomNextEdge);
+
+        indices.push_back(idxTopCurrEdge);
+        indices.push_back(idxBottomNextEdge);
+        indices.push_back(idxTopNextEdge);
+
+        // ======== Inner Face Vertices (Green Color) ========
+
+        // Create vertices for the inner faces
+        Vertex vTopCurrFace = vertices[topOuterCurr]; vTopCurrFace.color = brownColor;
+        Vertex vBottomCurrFace = vertices[bottomOuterCurr]; vBottomCurrFace.color = brownColor;
+        Vertex vBottomNextFace = vertices[bottomOuterNext]; vBottomNextFace.color = brownColor;
+        Vertex vTopNextFace = vertices[topOuterNext]; vTopNextFace.color = brownColor;
+
+        // Add face vertices to the vertex buffer
+        uint16_t idxTopCurrFace = static_cast<uint16_t>(vertices.size()); vertices.push_back(vTopCurrFace);
+        uint16_t idxBottomCurrFace = static_cast<uint16_t>(vertices.size()); vertices.push_back(vBottomCurrFace);
+        uint16_t idxBottomNextFace = static_cast<uint16_t>(vertices.size()); vertices.push_back(vBottomNextFace);
+        uint16_t idxTopNextFace = static_cast<uint16_t>(vertices.size()); vertices.push_back(vTopNextFace);
+
+        // Create indices for the inner faces (two triangles)
+        indices.push_back(idxTopCurrFace);
+        indices.push_back(idxBottomCurrFace);
+        indices.push_back(idxBottomNextFace);
+
+        indices.push_back(idxTopCurrFace);
+        indices.push_back(idxBottomNextFace);
+        indices.push_back(idxTopNextFace);
+    }
+}
+
+
+
+
+
+  void generateNSidedShapeWithCenterVertices(int n, float radius, float rotationAngle, float height, glm::vec3 color, std::vector<Vertex>& vertexVec) {
+    float angleIncrement = glm::radians(360.0f/static_cast<float>(n));
+    for (int i = 0; i < n; ++i) {
+      float angle = i * angleIncrement+rotationAngle;
+
+      float x = radius * cos(angle);
+      float y = radius * sin(angle);
+      float z = height;
+      vertexVec.push_back({{x, y,z}, color});  // Border color (black)
+    }
+    vertexVec.push_back({{0.0f, 0.0f,height}, color});  // Center vertex for outer hexagon
+  }
+  void generateNSidedShapeVertices(int n, float radius, float rotationAngle, float height, glm::vec3 color, std::vector<Vertex>& vertexVec) {
+    float angleIncrement = glm::radians(360.0f/static_cast<float>(n));
+    for (int i = 0; i < n; ++i) {
+      float angle = i * angleIncrement+rotationAngle;
+
+      float x = radius * cos(angle);
+      float y = radius * sin(angle);
+      float z = height;
+      vertexVec.push_back({{x, y,z}, color});  // Border color (black)
     }
   }
 
@@ -984,9 +1251,13 @@ class HelloTriangleApplication {
     renderPassInfo.renderArea.offset = {0, 0};
     renderPassInfo.renderArea.extent = swapChainExtent;
 
-    VkClearValue clearColor = {{{0.1f, 0.1f, 0.1f, 1.0f}}};
-    renderPassInfo.clearValueCount = 1;
-    renderPassInfo.pClearValues = &clearColor;
+    std::array<VkClearValue, 2> clearValues{};
+    clearValues[0].color = { {0.1f, 0.1f, 0.1f, 1.0f} }; // Clear color
+    clearValues[1].depthStencil = { 1.0f, 0 };           // Clear depth
+
+    renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+    renderPassInfo.pClearValues = clearValues.data();
+
 
     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
