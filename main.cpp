@@ -23,10 +23,10 @@ const bool macOS = true;
 const bool macOS = false;
 #endif
 
-const uint32_t WIDTH = 800;
-const uint32_t HEIGHT = 600;
+constexpr uint32_t WIDTH = 800;
+constexpr uint32_t HEIGHT = 600;
 
-const int MAX_FRAMES_IN_FLIGHT = 2;
+constexpr int MAX_FRAMES_IN_FLIGHT = 2;
 
 const std::vector<const char*> validationLayers = {
     "VK_LAYER_KHRONOS_validation"
@@ -118,10 +118,10 @@ class HelloTriangleApplication {
   std::vector<Vertex> vertices;
   std::vector<uint16_t> indices;
 
-  VkBuffer vertexBuffer;
-  VkDeviceMemory vertexBufferMemory;
-  VkBuffer indexBuffer;
-  VkDeviceMemory indexBufferMemory;
+  VkBuffer vertexBuffer = nullptr;
+  VkDeviceMemory vertexBufferMemory = nullptr;
+  VkBuffer indexBuffer = nullptr;
+  VkDeviceMemory indexBufferMemory = nullptr;
 
   const int GRID_WIDTH = 1;
   const int GRID_HEIGHT = 1;
@@ -643,7 +643,7 @@ class HelloTriangleApplication {
     vkBindImageMemory(device, image, imageMemory, 0);
   }
 
-  VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) {
+  VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) const {
     VkImageViewCreateInfo viewInfo{};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     viewInfo.image = image;  // The image to create a view for
@@ -905,11 +905,13 @@ void generateHexagonData() {
 
     // Inner hexagon vertices for border (black color)
     const auto baseIndexInnerBlack = static_cast<uint16_t>(vertices.size());
-    generateNSidedShapeVertices(6, radius_inner, rotationAngle, height, blackColor, vertices);
+    offsetNVertSurface(vertices.end()-1,vertices,0.0f,blackColor,6);
+    //generateNSidedShapeVertices(6, radius_inner, rotationAngle, height, blackColor, vertices);
 
     // Outer hexagon vertices (black color)
     const auto baseIndexOuter = static_cast<uint16_t>(vertices.size());
-    generateNSidedShapeVertices(6, radius_outer, rotationAngle, height, blackColor, vertices);
+    offsetNVertSurface(vertices.end(),vertices,0.111f,blackColor,6);
+    //generateNSidedShapeVertices(6, radius_outer, rotationAngle, height, blackColor, vertices);
 
     // Outer hexagon indices (border)
     for (uint16_t i = 0; i < 6; ++i) {
@@ -940,11 +942,11 @@ void generateHexagonData() {
 
     // Inner hexagon vertices for border (black color)
     const auto baseIndexInnerBlackBot = static_cast<uint16_t>(vertices.size());
-    generateNSidedShapeVertices(6, radius_inner, rotationAngle, -height, blackColor, vertices);
+    offsetNVertSurface(vertices.end()-1,vertices,0.0f,blackColor,6);
 
     // Outer hexagon vertices (black color)
     const auto baseIndexOuterBot = static_cast<uint16_t>(vertices.size());
-    generateNSidedShapeVertices(6, radius_outer, rotationAngle, -height, blackColor, vertices);
+    offsetNVertSurface(vertices.end(),vertices,0.11f,blackColor,6);
 
     // Outer hexagon indices (border)
     for (uint16_t i = 0; i < 6; ++i) {
@@ -962,7 +964,7 @@ void generateHexagonData() {
     }
 
 
-    // ======== Side Faces ========
+    /*// ======== Side Faces ========
 
     // Generate side faces between top and bottom outer hexagons
     for (uint16_t i = 0; i < 6; ++i) {
@@ -974,12 +976,14 @@ void generateHexagonData() {
 
         // ======== Border Vertices (Black Color) ========
 
+        auto offset = 1.0f;
         // Create vertices for the border edges
         Vertex vTopCurrEdge = vertices[topOuterCurr]; vTopCurrEdge.color = blackColor;
         Vertex vBottomCurrEdge = vertices[bottomOuterCurr]; vBottomCurrEdge.color = blackColor;
         Vertex vBottomNextEdge = vertices[bottomOuterNext]; vBottomNextEdge.color = blackColor;
         Vertex vTopNextEdge = vertices[topOuterNext]; vTopNextEdge.color = blackColor;
-
+        std::vector<Vertex> surfaceVerts {vTopCurrEdge,vBottomCurrEdge,vBottomNextEdge,vTopNextEdge};
+      offsetNVertSurface(surfaceVerts, vertices,offset,blackColor);
         // Add edge vertices to the vertex buffer
         uint16_t idxTopCurrEdge = static_cast<uint16_t>(vertices.size()); vertices.push_back(vTopCurrEdge);
         uint16_t idxBottomCurrEdge = static_cast<uint16_t>(vertices.size()); vertices.push_back(vBottomCurrEdge);
@@ -1017,8 +1021,55 @@ void generateHexagonData() {
         indices.push_back(idxTopCurrFace);
         indices.push_back(idxBottomNextFace);
         indices.push_back(idxTopNextFace);
-    }
+    }*/
 }
+
+  static void offsetNVertSurface(const std::vector<Vertex> & surfaceVerts, std::vector<Vertex>& verticesBuffer, const float offset, const glm::vec3& color)
+  {
+    glm::vec3 center {0.0f};
+    for (const auto& v : surfaceVerts) {
+      center += v.pos;
+    }
+    center /= surfaceVerts.size();
+
+    for (auto v : surfaceVerts) {
+      glm::vec3 dir = glm::normalize(v.pos - center);
+      v.pos += dir * offset;
+      v.color = color;
+
+      verticesBuffer.push_back(v);
+    }
+  }
+
+  static void offsetNVertSurface(
+                               const std::vector<Vertex>::iterator& endIt,
+                               std::vector<Vertex>& verticesBuffer,
+                               const float offset,
+                               const glm::vec3& color, int n)
+  {
+    glm::vec3 center{ 0.0f };
+    auto startIt = endIt-n;
+    // Compute the center
+    for (auto it = startIt; it != endIt; ++it) {
+      center += it->pos;
+    }
+    center /= static_cast<float>(n);
+
+    std::vector<Vertex> newVertices;
+
+    for (auto it = startIt; it != endIt; ++it) {
+      glm::vec3 dir = glm::normalize(it->pos - center);
+      Vertex vert = { it->pos, it->color };
+      vert.pos += dir * offset;
+      vert.color = color;
+
+      newVertices.push_back(vert);
+
+      std::cout << vert.pos.x << " " << vert.pos.y << std::endl;
+    }
+
+    verticesBuffer.insert(verticesBuffer.end(), newVertices.begin(), newVertices.end());
+  }
 
 
 
@@ -1033,6 +1084,7 @@ void generateHexagonData() {
       float y = radius * sin(angle);
       float z = height;
       vertexVec.push_back({{x, y,z}, color});  // Border color (black)
+      std::cout <<x<<" "<<y<<" "<<std::endl;
     }
     vertexVec.push_back({{0.0f, 0.0f,height}, color});  // Center vertex for outer hexagon
   }
@@ -1045,6 +1097,7 @@ void generateHexagonData() {
       float y = radius * sin(angle);
       float z = height;
       vertexVec.push_back({{x, y,z}, color});  // Border color (black)
+      std::cout <<x<<" "<<y<<" "<<std::endl;
     }
   }
 
