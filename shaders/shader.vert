@@ -25,9 +25,9 @@ void main() {
         xOffset += 0.75;
     }
 
-    vec3 pos = inPos * 0.1;  // Scale the position
-    pos.x += xOffset * 0.108; // Adjust x position
-    pos.y += yOffset * 0.084; // Adjust z position
+    vec3 pos = inPos * 0.1;
+    pos.x += xOffset * 0.1167;
+    pos.y += yOffset * 0.0875;
 
     gl_Position = ubo.proj * ubo.view * ubo.model * vec4(pos, 1.0);
     fragColor = inColor;

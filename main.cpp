@@ -123,8 +123,8 @@ class HelloTriangleApplication {
   VkBuffer indexBuffer = nullptr;
   VkDeviceMemory indexBufferMemory = nullptr;
 
-  const int GRID_WIDTH = 1;
-  const int GRID_HEIGHT = 1;
+  const int GRID_WIDTH = 10;
+  const int GRID_HEIGHT = 10;
   const int instanceCount = GRID_WIDTH * GRID_HEIGHT;
 
   float cameraAngleX = 0.0f;
@@ -306,9 +306,9 @@ class HelloTriangleApplication {
 
     createSwapChain();
     createImageViews();
-    createRenderPass();       // Add this line
-    createGraphicsPipeline(); // Add this line
-    createDepthResources();   // Add this line
+    createRenderPass();
+    createGraphicsPipeline();
+    createDepthResources();
     createFramebuffers();
   }
 
@@ -563,6 +563,9 @@ class HelloTriangleApplication {
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &colorAttachmentRef;
 
+    subpass.pDepthStencilAttachment = &depthAttachmentRef;
+
+
     VkSubpassDependency dependency{};
     dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
     dependency.dstSubpass = 0;
@@ -766,6 +769,9 @@ class HelloTriangleApplication {
     rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
     rasterizer.depthBiasEnable = VK_FALSE;
     //rasterizer.cullMode = VK_CULL_MODE_NONE; // Disable culling for testing
+    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+
+
 
 
     VkPipelineMultisampleStateCreateInfo multisampling{};
@@ -964,7 +970,7 @@ void generateHexagonData() {
     }
 
 
-    /*// ======== Side Faces ========
+// ======== Side Faces ========
 
     // Generate side faces between top and bottom outer hexagons
     for (uint16_t i = 0; i < 6; ++i) {
@@ -974,55 +980,140 @@ void generateHexagonData() {
         uint16_t bottomOuterCurr = baseIndexOuterBot + i;
         uint16_t bottomOuterNext = baseIndexOuterBot + ((i + 1) % 6);
 
-        // ======== Border Vertices (Black Color) ========
+        // ======== First Set: Original Square (Black Color) ========
 
-        auto offset = 1.0f;
-        // Create vertices for the border edges
-        Vertex vTopCurrEdge = vertices[topOuterCurr]; vTopCurrEdge.color = blackColor;
-        Vertex vBottomCurrEdge = vertices[bottomOuterCurr]; vBottomCurrEdge.color = blackColor;
-        Vertex vBottomNextEdge = vertices[bottomOuterNext]; vBottomNextEdge.color = blackColor;
-        Vertex vTopNextEdge = vertices[topOuterNext]; vTopNextEdge.color = blackColor;
-        std::vector<Vertex> surfaceVerts {vTopCurrEdge,vBottomCurrEdge,vBottomNextEdge,vTopNextEdge};
-      offsetNVertSurface(surfaceVerts, vertices,offset,blackColor);
-        // Add edge vertices to the vertex buffer
-        uint16_t idxTopCurrEdge = static_cast<uint16_t>(vertices.size()); vertices.push_back(vTopCurrEdge);
-        uint16_t idxBottomCurrEdge = static_cast<uint16_t>(vertices.size()); vertices.push_back(vBottomCurrEdge);
-        uint16_t idxBottomNextEdge = static_cast<uint16_t>(vertices.size()); vertices.push_back(vBottomNextEdge);
-        uint16_t idxTopNextEdge = static_cast<uint16_t>(vertices.size()); vertices.push_back(vTopNextEdge);
+        // Create original vertices
+        Vertex v0 = vertices[topOuterCurr]; v0.color = blackColor;
+        Vertex v1 = vertices[bottomOuterCurr]; v1.color = blackColor;
+        Vertex v2 = vertices[bottomOuterNext]; v2.color = blackColor;
+        Vertex v3 = vertices[topOuterNext]; v3.color = blackColor;
 
-        // Create indices for the border edges (two triangles)
-        indices.push_back(idxTopCurrEdge);
-        indices.push_back(idxBottomCurrEdge);
-        indices.push_back(idxBottomNextEdge);
+        std::vector<Vertex> originalSquare { v0, v1, v2, v3 };
 
-        indices.push_back(idxTopCurrEdge);
-        indices.push_back(idxBottomNextEdge);
-        indices.push_back(idxTopNextEdge);
+        // Add original vertices to vertex buffer
+        uint16_t idx_v0 = static_cast<uint16_t>(vertices.size()); vertices.push_back(v0);
+        uint16_t idx_v1 = static_cast<uint16_t>(vertices.size()); vertices.push_back(v1);
+        uint16_t idx_v2 = static_cast<uint16_t>(vertices.size()); vertices.push_back(v2);
+        uint16_t idx_v3 = static_cast<uint16_t>(vertices.size()); vertices.push_back(v3);
 
-        // ======== Inner Face Vertices (Green Color) ========
+        // ======== Second Set: Offset Square (Black Color) ========
 
-        // Create vertices for the inner faces
-        Vertex vTopCurrFace = vertices[topOuterCurr]; vTopCurrFace.color = brownColor;
-        Vertex vBottomCurrFace = vertices[bottomOuterCurr]; vBottomCurrFace.color = brownColor;
-        Vertex vBottomNextFace = vertices[bottomOuterNext]; vBottomNextFace.color = brownColor;
-        Vertex vTopNextFace = vertices[topOuterNext]; vTopNextFace.color = brownColor;
+        std::vector<Vertex> offsetVerticesBlack;
+        Vertex centerVertex;
+        float offsetInwards = 0.1f; // Adjust as needed
 
-        // Add face vertices to the vertex buffer
-        uint16_t idxTopCurrFace = static_cast<uint16_t>(vertices.size()); vertices.push_back(vTopCurrFace);
-        uint16_t idxBottomCurrFace = static_cast<uint16_t>(vertices.size()); vertices.push_back(vBottomCurrFace);
-        uint16_t idxBottomNextFace = static_cast<uint16_t>(vertices.size()); vertices.push_back(vBottomNextFace);
-        uint16_t idxTopNextFace = static_cast<uint16_t>(vertices.size()); vertices.push_back(vTopNextFace);
+        offsetNVertSurfaceWithCenter(originalSquare, offsetVerticesBlack, offsetInwards, blackColor, centerVertex);
 
-        // Create indices for the inner faces (two triangles)
-        indices.push_back(idxTopCurrFace);
-        indices.push_back(idxBottomCurrFace);
-        indices.push_back(idxBottomNextFace);
+        // Add offset vertices to vertex buffer
+        uint16_t idx_offset_v0 = static_cast<uint16_t>(vertices.size()); vertices.push_back(offsetVerticesBlack[0]);
+        uint16_t idx_offset_v1 = static_cast<uint16_t>(vertices.size()); vertices.push_back(offsetVerticesBlack[1]);
+        uint16_t idx_offset_v2 = static_cast<uint16_t>(vertices.size()); vertices.push_back(offsetVerticesBlack[2]);
+        uint16_t idx_offset_v3 = static_cast<uint16_t>(vertices.size()); vertices.push_back(offsetVerticesBlack[3]);
 
-        indices.push_back(idxTopCurrFace);
-        indices.push_back(idxBottomNextFace);
-        indices.push_back(idxTopNextFace);
-    }*/
+        // ======== Third Set: Offset Square (Brown Color) ========
+
+        std::vector<Vertex> offsetVerticesBrown = offsetVerticesBlack;
+        for (auto& v : offsetVerticesBrown) {
+            v.color = brownColor;
+        }
+
+        // Add brown vertices to vertex buffer
+        uint16_t idx_brown_v0 = static_cast<uint16_t>(vertices.size()); vertices.push_back(offsetVerticesBrown[0]);
+        uint16_t idx_brown_v1 = static_cast<uint16_t>(vertices.size()); vertices.push_back(offsetVerticesBrown[1]);
+        uint16_t idx_brown_v2 = static_cast<uint16_t>(vertices.size()); vertices.push_back(offsetVerticesBrown[2]);
+        uint16_t idx_brown_v3 = static_cast<uint16_t>(vertices.size()); vertices.push_back(offsetVerticesBrown[3]);
+
+        // ======== Add Center Point (Brown Color) ========
+
+        centerVertex.color = brownColor;
+        uint16_t idx_center = static_cast<uint16_t>(vertices.size()); vertices.push_back(centerVertex);
+
+        // ======== Fill Area Between First and Second Squares (Black Border) ========
+
+        // Edge 0-1
+        indices.push_back(idx_v0);
+        indices.push_back(idx_v1);
+        indices.push_back(idx_offset_v1);
+
+        indices.push_back(idx_v0);
+        indices.push_back(idx_offset_v1);
+        indices.push_back(idx_offset_v0);
+
+        // Edge 1-2
+        indices.push_back(idx_v1);
+        indices.push_back(idx_v2);
+        indices.push_back(idx_offset_v2);
+
+        indices.push_back(idx_v1);
+        indices.push_back(idx_offset_v2);
+        indices.push_back(idx_offset_v1);
+
+        // Edge 2-3
+        indices.push_back(idx_v2);
+        indices.push_back(idx_v3);
+        indices.push_back(idx_offset_v3);
+
+        indices.push_back(idx_v2);
+        indices.push_back(idx_offset_v3);
+        indices.push_back(idx_offset_v2);
+
+        // Edge 3-0
+        indices.push_back(idx_v3);
+        indices.push_back(idx_v0);
+        indices.push_back(idx_offset_v0);
+
+        indices.push_back(idx_v3);
+        indices.push_back(idx_offset_v0);
+        indices.push_back(idx_offset_v3);
+
+        // ======== Fill Third Square with Brown Using Center Point ========
+
+        // Triangle 1
+        indices.push_back(idx_brown_v0);
+        indices.push_back(idx_brown_v1);
+        indices.push_back(idx_center);
+
+        // Triangle 2
+        indices.push_back(idx_brown_v1);
+        indices.push_back(idx_brown_v2);
+        indices.push_back(idx_center);
+
+        // Triangle 3
+        indices.push_back(idx_brown_v2);
+        indices.push_back(idx_brown_v3);
+        indices.push_back(idx_center);
+
+        // Triangle 4
+        indices.push_back(idx_brown_v3);
+        indices.push_back(idx_brown_v0);
+        indices.push_back(idx_center);
+    }
 }
+
+// ======== Helper Functions ========
+
+static void offsetNVertSurfaceWithCenter(
+    const std::vector<Vertex>& surfaceVerts,
+    std::vector<Vertex>& newVertices,
+    const float offset,
+    const glm::vec3& color,
+    Vertex& centerVertex) {
+    glm::vec3 center { 0.0f };
+    for (const auto& v : surfaceVerts) {
+      center += v.pos;
+    }
+    center /= surfaceVerts.size();
+
+    for (const auto& v : surfaceVerts) {
+      glm::vec3 dir = glm::normalize(center - v.pos); // Direction towards center
+      Vertex vert = v;
+      vert.pos += dir * offset;
+      vert.color = color;
+      newVertices.push_back(vert);
+    }
+
+    centerVertex = { center, color }; // Center point
+  }
 
   static void offsetNVertSurface(const std::vector<Vertex> & surfaceVerts, std::vector<Vertex>& verticesBuffer, const float offset, const glm::vec3& color)
   {
