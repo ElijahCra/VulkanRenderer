@@ -2,11 +2,9 @@
 
 layout(location = 0) in vec3 inPos;
 layout(location = 1) in vec3 inColor;
+layout(location = 2) in vec2 instanceOffset;
 
 layout(location = 0) out vec3 fragColor;
-
-const int GRID_WIDTH = 10;
-const int GRID_HEIGHT = 10;
 
 layout(binding = 0) uniform UniformBufferObject {
     mat4 model;
@@ -15,19 +13,9 @@ layout(binding = 0) uniform UniformBufferObject {
 } ubo;
 
 void main() {
-    int gridX = gl_InstanceIndex % GRID_WIDTH;
-    int gridY = gl_InstanceIndex / GRID_WIDTH;
-
-    float xOffset = (float(gridX) - float(GRID_WIDTH - 1) / 2.0) * 1.5;
-    float yOffset = (float(gridY) - float(GRID_HEIGHT - 1) / 2.0) * sqrt(3.0);
-
-    if (gridY % 2 == 1) {
-        xOffset += 0.75;
-    }
-
     vec3 pos = inPos * 0.1;
-    pos.x += xOffset * 0.1167;
-    pos.y += yOffset * 0.0875;
+    pos.x += instanceOffset.x;
+    pos.y += instanceOffset.y;
 
     gl_Position = ubo.proj * ubo.view * ubo.model * vec4(pos, 1.0);
     fragColor = inColor;

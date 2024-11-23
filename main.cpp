@@ -42,6 +42,9 @@ const bool enableValidationLayers = false;
 const bool enableValidationLayers = true;
 #endif
 
+struct InstanceData {
+  glm::vec2 offset;
+};
 
 struct Vertex {
   glm::vec3 pos;
@@ -55,21 +58,40 @@ struct Vertex {
     return bindingDescription;
   }
 
-  static std::array<VkVertexInputAttributeDescription, 2> getAttributeDescriptions() {
-    std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions{};
+  // In Vertex struct
+  static VkVertexInputBindingDescription getInstanceBindingDescription() {
+    VkVertexInputBindingDescription bindingDescription{};
+    bindingDescription.binding = 1; // Binding 1 for instance data
+    bindingDescription.stride = sizeof(InstanceData);
+    bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
+    return bindingDescription;
+  }
 
+
+  static std::array<VkVertexInputAttributeDescription, 3> getAttributeDescriptions() {
+    std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions{};
+
+    // Position attribute
     attributeDescriptions[0].binding = 0;
     attributeDescriptions[0].location = 0;
     attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
     attributeDescriptions[0].offset = offsetof(Vertex, pos);
 
+    // Color attribute
     attributeDescriptions[1].binding = 0;
     attributeDescriptions[1].location = 1;
     attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
     attributeDescriptions[1].offset = offsetof(Vertex, color);
 
+    // Instance offset attribute
+    attributeDescriptions[2].binding = 1;
+    attributeDescriptions[2].location = 2;
+    attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
+    attributeDescriptions[2].offset = offsetof(InstanceData, offset);
+
     return attributeDescriptions;
   }
+
 };
 
 class HelloTriangleApplication {
@@ -82,30 +104,30 @@ class HelloTriangleApplication {
   }
 
  private:
-  GLFWwindow* window;
+  GLFWwindow* window = nullptr;
 
-  VkInstance instance;
-  VkDebugUtilsMessengerEXT debugMessenger;
-  VkSurfaceKHR surface;
+  VkInstance instance = nullptr;
+  VkDebugUtilsMessengerEXT debugMessenger = nullptr;
+  VkSurfaceKHR surface = nullptr;
 
   VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-  VkDevice device;
+  VkDevice device = nullptr;
 
-  VkQueue graphicsQueue;
-  VkQueue presentQueue;
+  VkQueue graphicsQueue = nullptr;
+  VkQueue presentQueue = nullptr;
 
-  VkSwapchainKHR swapChain;
+  VkSwapchainKHR swapChain = nullptr;
   std::vector<VkImage> swapChainImages;
   VkFormat swapChainImageFormat;
   VkExtent2D swapChainExtent;
   std::vector<VkImageView> swapChainImageViews;
   std::vector<VkFramebuffer> swapChainFramebuffers;
 
-  VkRenderPass renderPass;
-  VkPipelineLayout pipelineLayout;
-  VkPipeline graphicsPipeline;
+  VkRenderPass renderPass = nullptr;
+  VkPipelineLayout pipelineLayout = nullptr;
+  VkPipeline graphicsPipeline = nullptr;
 
-  VkCommandPool commandPool;
+  VkCommandPool commandPool = nullptr;
   std::vector<VkCommandBuffer> commandBuffers;
 
   std::vector<VkSemaphore> imageAvailableSemaphores;
@@ -115,13 +137,31 @@ class HelloTriangleApplication {
 
   bool framebufferResized = false;
 
-  std::vector<Vertex> vertices;
-  std::vector<uint16_t> indices;
+  std::vector<Vertex> edgeVertices;
+  std::vector<uint16_t> edgeIndices;
+  std::vector<Vertex> internalVertices;
+  std::vector<uint16_t> internalIndices;
 
-  VkBuffer vertexBuffer = nullptr;
-  VkDeviceMemory vertexBufferMemory = nullptr;
-  VkBuffer indexBuffer = nullptr;
-  VkDeviceMemory indexBufferMemory = nullptr;
+  VkBuffer edgeVertexBuffer = nullptr;
+  VkDeviceMemory edgeVertexBufferMemory = nullptr;
+  VkBuffer edgeIndexBuffer = nullptr;
+  VkDeviceMemory edgeIndexBufferMemory = nullptr;
+
+  VkBuffer internalVertexBuffer = nullptr;
+  VkDeviceMemory internalVertexBufferMemory = nullptr;
+  VkBuffer internalIndexBuffer = nullptr;
+  VkDeviceMemory internalIndexBufferMemory = nullptr;
+
+
+
+  std::vector<InstanceData> edgeInstanceData;
+  std::vector<InstanceData> internalInstanceData;
+
+  VkBuffer edgeInstanceBuffer;
+  VkDeviceMemory edgeInstanceBufferMemory;
+  VkBuffer internalInstanceBuffer;
+  VkDeviceMemory internalInstanceBufferMemory;
+
 
   const int GRID_WIDTH = 10;
   const int GRID_HEIGHT = 10;
@@ -141,8 +181,8 @@ class HelloTriangleApplication {
   std::vector<VkBuffer> uniformBuffers;
   std::vector<VkDeviceMemory> uniformBuffersMemory;
 
-  VkDescriptorSetLayout descriptorSetLayout;
-  VkDescriptorPool descriptorPool;
+  VkDescriptorSetLayout descriptorSetLayout = nullptr;
+  VkDescriptorPool descriptorPool = nullptr;
   std::vector<VkDescriptorSet> descriptorSets;
 
 
@@ -216,8 +256,11 @@ class HelloTriangleApplication {
     createFramebuffers();
     createCommandPool();
     generateHexagonData();
-    createVertexBuffer();
-    createIndexBuffer();
+    createVertexBuffer(edgeVertices, edgeVertexBuffer, edgeVertexBufferMemory);
+    createIndexBuffer(edgeIndices, edgeIndexBuffer, edgeIndexBufferMemory);
+    createVertexBuffer(internalVertices, internalVertexBuffer, internalVertexBufferMemory);
+    createIndexBuffer(internalIndices, internalIndexBuffer, internalIndexBufferMemory);
+    prepareInstanceData();
     createUniformBuffers();
     createDescriptorPool();
     createDescriptorSets();
@@ -255,11 +298,19 @@ class HelloTriangleApplication {
   void cleanup() {
     cleanupSwapChain();
 
-    vkDestroyBuffer(device, indexBuffer, nullptr);
-    vkFreeMemory(device, indexBufferMemory, nullptr);
+    vkDestroyBuffer(device, edgeVertexBuffer, nullptr);
+    vkFreeMemory(device, edgeVertexBufferMemory, nullptr);
+    vkDestroyBuffer(device, edgeIndexBuffer, nullptr);
+    vkFreeMemory(device, edgeIndexBufferMemory, nullptr);
+    vkDestroyBuffer(device, internalVertexBuffer, nullptr);
+    vkFreeMemory(device, internalVertexBufferMemory, nullptr);
+    vkDestroyBuffer(device, internalIndexBuffer, nullptr);
+    vkFreeMemory(device, internalIndexBufferMemory, nullptr);
 
-    vkDestroyBuffer(device, vertexBuffer, nullptr);
-    vkFreeMemory(device, vertexBufferMemory, nullptr);
+    vkDestroyBuffer(device, edgeInstanceBuffer, nullptr);
+    vkFreeMemory(device, edgeInstanceBufferMemory, nullptr);
+    vkDestroyBuffer(device, internalInstanceBuffer, nullptr);
+    vkFreeMemory(device, internalInstanceBufferMemory, nullptr);
 
     vkDestroyPipeline(device, graphicsPipeline, nullptr);
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
@@ -311,6 +362,56 @@ class HelloTriangleApplication {
     createDepthResources();
     createFramebuffers();
   }
+
+  void prepareInstanceData() {
+    for (int y = 0; y < GRID_HEIGHT; ++y) {
+      for (int x = 0; x < GRID_WIDTH; ++x) {
+        InstanceData instance_data{};
+        instance_data.offset = calculatePositionOffset(x, y);
+
+        if (isEdgeHexagon(x, y)) {
+          edgeInstanceData.push_back(instance_data);
+        } else {
+          internalInstanceData.push_back(instance_data);
+        }
+      }
+    }
+
+    std::cout << "Edge instances: " << edgeInstanceData.size() << std::endl;
+    std::cout << "Internal instances: " << internalInstanceData.size() << std::endl;
+
+    createInstanceBuffer(edgeInstanceData, edgeInstanceBuffer, edgeInstanceBufferMemory);
+    createInstanceBuffer(internalInstanceData, internalInstanceBuffer, internalInstanceBufferMemory);
+  }
+
+  [[nodiscard]] bool isEdgeHexagon(int x, int y) const {
+    return (x == 0 || x == GRID_WIDTH - 1 || y == 0 || y == GRID_HEIGHT - 1);
+  }
+
+  [[nodiscard]] glm::vec2 calculatePositionOffset(const int gridX, const int gridY) const {
+    float xOffset = (static_cast<float>(gridX) - static_cast<float>(GRID_WIDTH - 1) / 2.0f) * 1.5f;
+    float yOffset = (static_cast<float>(gridY) - static_cast<float>(GRID_HEIGHT - 1) / 2.0f) * sqrt(3.0f);
+
+    if (gridY % 2 == 1) {
+      xOffset += 0.75f;
+    }
+
+    xOffset *= 0.1167f;
+    yOffset *= 0.0875f;
+
+    return {xOffset, yOffset};
+  }
+
+  void createInstanceBuffer(const std::vector<InstanceData>& instanceData, VkBuffer& buffer, VkDeviceMemory& bufferMemory) {
+    VkDeviceSize bufferSize = sizeof(InstanceData) * instanceData.size();
+    createBuffer(bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, buffer, bufferMemory);
+
+    void* data;
+    vkMapMemory(device, bufferMemory, 0, bufferSize, 0, &data);
+    memcpy(data, instanceData.data(), (size_t)bufferSize);
+    vkUnmapMemory(device, bufferMemory);
+  }
+
 
   void createInstance() {
     if (enableValidationLayers && !checkValidationLayerSupport()) {
@@ -740,12 +841,14 @@ class HelloTriangleApplication {
     VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
     auto bindingDescription = Vertex::getBindingDescription();
+    auto instanceBindingDescription = Vertex::getInstanceBindingDescription();
+    std::array<VkVertexInputBindingDescription, 2> bindingDescriptions = {bindingDescription, instanceBindingDescription};
     auto attributeDescriptions = Vertex::getAttributeDescriptions();
 
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertexInputInfo.vertexBindingDescriptionCount = 1;
-    vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+    vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(bindingDescriptions.size());
+    vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions.data();
     vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
     vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
@@ -886,6 +989,16 @@ class HelloTriangleApplication {
   }
 
 void generateHexagonData() {
+    // Generate mesh for edge hexagons (with sides)
+    generateHexagonMesh(true, edgeVertices, edgeIndices);
+
+    // Generate mesh for internal hexagons (without sides)
+    generateHexagonMesh(false, internalVertices, internalIndices);
+}
+
+// ======== Helper Functions ========
+  void generateHexagonMesh(bool includeSides, std::vector<Vertex>& vertices, std::vector<uint16_t>& indices) {
+
     constexpr float radius_outer = 1.0f;
     constexpr float radius_inner = 0.9f;
     constexpr float rotationAngle = glm::radians(30.0f);
@@ -970,7 +1083,10 @@ void generateHexagonData() {
     }
 
 
-// ======== Side Faces ========
+
+
+    if (includeSides) {
+    // ======== Side Faces ========
 
     // Generate side faces between top and bottom outer hexagons
     for (uint16_t i = 0; i < 6; ++i) {
@@ -1087,10 +1203,9 @@ void generateHexagonData() {
         indices.push_back(idx_brown_v3);
         indices.push_back(idx_brown_v0);
         indices.push_back(idx_center);
+      }
     }
-}
-
-// ======== Helper Functions ========
+  }
 
 static void offsetNVertSurfaceWithCenter(
     const std::vector<Vertex>& surfaceVerts,
@@ -1155,8 +1270,6 @@ static void offsetNVertSurfaceWithCenter(
       vert.color = color;
 
       newVertices.push_back(vert);
-
-      std::cout << vert.pos.x << " " << vert.pos.y << std::endl;
     }
 
     verticesBuffer.insert(verticesBuffer.end(), newVertices.begin(), newVertices.end());
@@ -1175,7 +1288,6 @@ static void offsetNVertSurfaceWithCenter(
       float y = radius * sin(angle);
       float z = height;
       vertexVec.push_back({{x, y,z}, color});  // Border color (black)
-      std::cout <<x<<" "<<y<<" "<<std::endl;
     }
     vertexVec.push_back({{0.0f, 0.0f,height}, color});  // Center vertex for outer hexagon
   }
@@ -1188,11 +1300,10 @@ static void offsetNVertSurfaceWithCenter(
       float y = radius * sin(angle);
       float z = height;
       vertexVec.push_back({{x, y,z}, color});  // Border color (black)
-      std::cout <<x<<" "<<y<<" "<<std::endl;
     }
   }
 
-  void createVertexBuffer() {
+  void createVertexBuffer(const std::vector<Vertex>& vertices, VkBuffer& vertexBuffer, VkDeviceMemory& vertexBufferMemory) {
     VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
 
     VkBufferCreateInfo bufferInfo{};
@@ -1227,7 +1338,7 @@ static void offsetNVertSurfaceWithCenter(
     vkUnmapMemory(device, vertexBufferMemory);
   }
 
-  void createIndexBuffer() {
+  void createIndexBuffer(const std::vector<uint16_t>& indices, VkBuffer& indexBuffer, VkDeviceMemory& indexBufferMemory) {
     VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
 
     VkBufferCreateInfo bufferInfo{};
@@ -1424,13 +1535,29 @@ static void offsetNVertSurfaceWithCenter(
     scissor.extent = swapChainExtent;
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-    VkBuffer vertexBuffers[] = {vertexBuffer};
+    // Draw edge hexagons
     VkDeviceSize offsets[] = {0};
-    vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
 
-    vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+    // Bind vertex buffer at binding 0
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &edgeVertexBuffer, offsets);
+    // Bind instance buffer at binding 1
+    vkCmdBindVertexBuffers(commandBuffer, 1, 1, &edgeInstanceBuffer, offsets);
 
-    vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), instanceCount, 0, 0, 0);
+    vkCmdBindIndexBuffer(commandBuffer, edgeIndexBuffer, 0, VK_INDEX_TYPE_UINT16);
+
+    vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(edgeIndices.size()),
+                     static_cast<uint32_t>(edgeInstanceData.size()), 0, 0, 0);
+
+    // Draw internal hexagons
+    // Bind vertex buffer at binding 0
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &internalVertexBuffer, offsets);
+    // Bind instance buffer at binding 1
+    vkCmdBindVertexBuffers(commandBuffer, 1, 1, &internalInstanceBuffer, offsets);
+
+    vkCmdBindIndexBuffer(commandBuffer, internalIndexBuffer, 0, VK_INDEX_TYPE_UINT16);
+
+    vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(internalIndices.size()),
+                     static_cast<uint32_t>(internalInstanceData.size()), 0, 0, 0);
 
     vkCmdEndRenderPass(commandBuffer);
 
