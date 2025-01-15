@@ -5,8 +5,7 @@ set(CMAKE_CXX_STANDARD 23)
 
 
 
-add_executable(VulkanMagnets main.cpp
-        main.cpp)
+add_executable(VulkanMagnets main.cpp Application.cpp Buffer.cpp CommandPool.cpp Device.cpp Image.cpp Instance.cpp Pipeline.cpp RenderPass.cpp Swapchain.cpp Synchronization.cpp Window.cpp)
 
 find_package(Vulkan REQUIRED)
 target_include_directories(${PROJECT_NAME} PUBLIC ${Vulkan_INCLUDE_DIRS})
