@@ -1,5 +1,6 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#include "VulkanWindow.cpp"
 
 #include <iostream>
 #include <fstream>
@@ -96,15 +97,68 @@ struct Vertex {
 
 class HelloTriangleApplication {
  public:
+  static void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
+  {
+    auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
+    app->handleScrollInput(xoffset, yoffset);
+  }
+
+  void handleScrollInput(double xoffset, double yoffset) {
+    const float fovIncrement = 1.0f;
+    fov += fovIncrement*yoffset;
+    if (fov > 45.0f) fov = 45.0f;
+    if (fov < 1) fov = 1.0f;
+  }
+
+  static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
+    app->handleKeyInput(key, action);
+  }
+
+  void handleKeyInput(int key, int action) {
+    if (action == GLFW_PRESS || action == GLFW_REPEAT) {
+      constexpr float angleIncrement = 0.1f;
+
+      if (key == GLFW_KEY_LEFT) {
+        cameraAngleX -= angleIncrement;
+
+      } else if (key == GLFW_KEY_RIGHT) {
+        cameraAngleX += angleIncrement;
+      } else if (key == GLFW_KEY_UP) {
+        cameraAngleY += angleIncrement;
+        if (cameraAngleY > glm::pi<float>() - 0.01f) cameraAngleY = glm::pi<float>() - 0.01f;
+      } else if (key == GLFW_KEY_DOWN) {
+        cameraAngleY -= angleIncrement;
+        if (cameraAngleY < 0.01f) cameraAngleY = 0.01f;
+      }
+    }
+  }
   void run() {
-    initWindow();
+    vulkanWindow = std::make_unique<VulkanWindow>(WIDTH, HEIGHT, "Vulkan");
+    vulkanWindow->setFramebufferResizeCallback(
+    [this](int newWidth, int newHeight) {
+        this->framebufferResized = true;
+    }
+);
+
+    vulkanWindow->setKeyCallback(
+        [this](int key, int action) {
+            this->handleKeyInput(key, action);
+        }
+    );
+
+    vulkanWindow->setScrollCallback(
+        [this](double xoffset, double yoffset) {
+            this->handleScrollInput(xoffset, yoffset);
+        }
+    );
     initVulkan();
     mainLoop();
     cleanup();
   }
 
  private:
-  GLFWwindow* window = nullptr;
+  std::unique_ptr<VulkanWindow> vulkanWindow;
 
   VkInstance instance = nullptr;
   VkDebugUtilsMessengerEXT debugMessenger = nullptr;
@@ -194,54 +248,7 @@ class HelloTriangleApplication {
   std::vector<VkDescriptorSet> descriptorSets;
 
 
-  void initWindow() {
-    glfwInit();
 
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-
-    window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
-    glfwSetWindowUserPointer(window, this);
-    glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
-    glfwSetKeyCallback(window, keyCallback);
-    glfwSetScrollCallback(window, scroll_callback);
-  }
-
-  static void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
-  {
-    auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
-    app->handleScrollInput(xoffset, yoffset);
-  }
-
-  void handleScrollInput(double xoffset, double yoffset) {
-      const float fovIncrement = 1.0f;
-      fov += fovIncrement*yoffset;
-      if (fov > 45.0f) fov = 45.0f;
-      if (fov < 1) fov = 1.0f;
-  }
-
-  static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-    auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
-    app->handleKeyInput(key, action);
-  }
-
-  void handleKeyInput(int key, int action) {
-    if (action == GLFW_PRESS || action == GLFW_REPEAT) {
-      constexpr float angleIncrement = 0.1f;
-
-      if (key == GLFW_KEY_LEFT) {
-        cameraAngleX -= angleIncrement;
-
-      } else if (key == GLFW_KEY_RIGHT) {
-        cameraAngleX += angleIncrement;
-      } else if (key == GLFW_KEY_UP) {
-        cameraAngleY += angleIncrement;
-        if (cameraAngleY > glm::pi<float>() - 0.01f) cameraAngleY = glm::pi<float>() - 0.01f;
-      } else if (key == GLFW_KEY_DOWN) {
-        cameraAngleY -= angleIncrement;
-        if (cameraAngleY < 0.01f) cameraAngleY = 0.01f;
-      }
-    }
-  }
 
   VkSampleCountFlagBits getMaxUsableSampleCount() {
     VkPhysicalDeviceProperties physicalDeviceProperties;
@@ -256,13 +263,6 @@ class HelloTriangleApplication {
     if (counts & VK_SAMPLE_COUNT_2_BIT) { return VK_SAMPLE_COUNT_2_BIT; }
 
     return VK_SAMPLE_COUNT_1_BIT;
-  }
-
-
-
-  static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
-    auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
-    app->framebufferResized = true;
   }
 
   void initVulkan() {
@@ -294,8 +294,8 @@ class HelloTriangleApplication {
   }
 
   void mainLoop() {
-    while (!glfwWindowShouldClose(window)) {
-      glfwPollEvents();
+    while (!vulkanWindow->shouldClose()) {
+      vulkanWindow->pollEvents();
       drawFrame();
     }
 
@@ -367,16 +367,16 @@ class HelloTriangleApplication {
     vkDestroySurfaceKHR(instance, surface, nullptr);
     vkDestroyInstance(instance, nullptr);
 
-    glfwDestroyWindow(window);
+    glfwDestroyWindow(vulkanWindow->getGLFWwindow());
 
     glfwTerminate();
   }
 
   void recreateSwapChain() {
     int width = 0, height = 0;
-    glfwGetFramebufferSize(window, &width, &height);
+    glfwGetFramebufferSize(vulkanWindow->getGLFWwindow(), &width, &height);
     while (width == 0 || height == 0) {
-      glfwGetFramebufferSize(window, &width, &height);
+      glfwGetFramebufferSize(vulkanWindow->getGLFWwindow(), &width, &height);
       glfwWaitEvents();
     }
 
@@ -512,7 +512,7 @@ class HelloTriangleApplication {
   }
 
   void createSurface() {
-    if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS) {
+    if (glfwCreateWindowSurface(instance, vulkanWindow->getGLFWwindow(), nullptr, &surface) != VK_SUCCESS) {
       throw std::runtime_error("failed to create window surface!");
     }
   }
@@ -1772,7 +1772,7 @@ static void offsetNVertSurfaceWithCenter(
       return capabilities.currentExtent;
     } else {
       int width, height;
-      glfwGetFramebufferSize(window, &width, &height);
+      glfwGetFramebufferSize(vulkanWindow->getGLFWwindow(), &width, &height);
 
       VkExtent2D actualExtent = {
           static_cast<uint32_t>(width),
