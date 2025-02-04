@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <set>
 #include <glm/glm.hpp>
@@ -686,8 +687,8 @@ class HelloTriangleApplication {
       vertShaderCode = readFile("../shaders/vert.spv");
       fragShaderCode = readFile("../shaders/frag.spv");
     } else {
-      vertShaderCode = readFile("shaders/vert.spv");
-      fragShaderCode = readFile("shaders/frag.spv");
+      vertShaderCode = readFile("../shaders/vert.spv");
+      fragShaderCode = readFile("../shaders/frag.spv");
     }
 
     VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
