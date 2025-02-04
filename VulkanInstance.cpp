@@ -10,12 +10,10 @@
 #include <iostream>
 #include <cstring>
 
-// We need these references (from your global code or config):
 extern const bool enableValidationLayers;
 extern const std::vector<const char*> validationLayers;
 extern const bool macOS;
 
-// Forward declarations of helper methods
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance,
                                       const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
                                       const VkAllocationCallbacks* pAllocator,
@@ -27,14 +25,12 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance,
 
 class VulkanInstance {
 public:
-    // We'll create the instance inside the constructor
-    VulkanInstance(GLFWwindow* window) : window(window) {
+    explicit VulkanInstance(GLFWwindow* window) : window(window) {
         createInstance();
         setupDebugMessenger();
         createSurface();
     }
 
-    // Clean up in the destructor
     ~VulkanInstance() {
         if (enableValidationLayers && debugMessenger != VK_NULL_HANDLE) {
             DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
@@ -47,9 +43,8 @@ public:
         }
     }
 
-    // Provide access to the underlying VkInstance and VkSurfaceKHR
-    VkInstance getVkInstance() const { return instance; }
-    VkSurfaceKHR getSurface() const { return surface; }
+    [[nodiscard]] VkInstance getVkInstance() const { return instance; }
+    [[nodiscard]] VkSurfaceKHR getSurface() const { return surface; }
 
 private:
     GLFWwindow* window = nullptr;
@@ -76,7 +71,6 @@ private:
 
         auto extensions = getRequiredExtensions();
         if (macOS) {
-            // Add portability enumeration if on macOS
             extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
             createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
         }
@@ -112,7 +106,6 @@ private:
         }
     }
 
-    // Same from your original code, but now local to this class
     void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo) {
         createInfo = {};
         createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
@@ -124,7 +117,7 @@ private:
             VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
             VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
             VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-        createInfo.pfnUserCallback = debugCallback; // We’ll define this below
+        createInfo.pfnUserCallback = debugCallback;
     }
 
     void createSurface() {
@@ -133,7 +126,6 @@ private:
         }
     }
 
-    // === We'll move these helpers inside the class as well ===
     bool checkValidationLayerSupport() {
         uint32_t layerCount;
         vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
@@ -168,13 +160,11 @@ private:
             extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
         }
         if (macOS) {
-            // For macOS portability
             extensions.push_back("VK_KHR_get_physical_device_properties2");
         }
         return extensions;
     }
 
-    // The actual debug callback
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
         VkDebugUtilsMessageTypeFlagsEXT messageType,

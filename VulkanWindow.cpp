@@ -52,12 +52,10 @@ private:
     const char* title;
     GLFWwindow* window = nullptr;
 
-    // We'll store std::function callbacks that forward to the actual handlers
     std::function<void(int, int)> framebufferResizeCallbackFn;
     std::function<void(int, int)> keyCallbackFn;
     std::function<void(double, double)> scrollCallbackFn;
 
-    // Static proxy callbacks for GLFW
     static void framebufferResizeCallbackProxy(GLFWwindow* window, int newWidth, int newHeight) {
         auto self = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
         if (self->framebufferResizeCallbackFn) {
@@ -85,16 +83,13 @@ private:
         }
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-        // Create the GLFW window
         window = glfwCreateWindow(width, height, title, nullptr, nullptr);
         if (!window) {
             throw std::runtime_error("Failed to create GLFW window!");
         }
 
-        // Associate 'this' with the user pointer
         glfwSetWindowUserPointer(window, this);
 
-        // Set up static callbacks that forward to std::function
         glfwSetFramebufferSizeCallback(window, framebufferResizeCallbackProxy);
         glfwSetKeyCallback(window, keyCallbackProxy);
         glfwSetScrollCallback(window, scrollCallbackProxy);
