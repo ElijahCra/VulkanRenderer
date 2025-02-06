@@ -683,13 +683,9 @@ class HelloTriangleApplication {
   void createGraphicsPipeline() {
     std::vector<char> vertShaderCode;
     std::vector<char> fragShaderCode;
-    if (macOS) {
-      vertShaderCode = readFile("../shaders/vert.spv");
-      fragShaderCode = readFile("../shaders/frag.spv");
-    } else {
-      vertShaderCode = readFile("../shaders/vert.spv");
-      fragShaderCode = readFile("../shaders/frag.spv");
-    }
+    vertShaderCode = readFile("../shaders/vert.spv");
+    fragShaderCode = readFile("../shaders/frag.spv");
+
 
     VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
     VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
@@ -1339,19 +1335,7 @@ static void offsetNVertSurfaceWithCenter(
   }
 
 
-  uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
-    VkPhysicalDeviceMemoryProperties memProperties;
-    vkGetPhysicalDeviceMemoryProperties(vulkanDevice->getPhysicalDevice(), &memProperties);
 
-    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
-      if ((typeFilter & (1 << i)) &&
-          (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
-        return i;
-      }
-    }
-
-    throw std::runtime_error("failed to find suitable memory type!");
-  }
 
   void createCommandBuffers() {
     commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
