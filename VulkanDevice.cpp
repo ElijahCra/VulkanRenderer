@@ -9,7 +9,6 @@
 #include <optional>
 #include <set>
 #include <stdexcept>
-#include <iostream>
 #include <algorithm>
 #include <cstdint>
 
@@ -21,13 +20,13 @@ struct QueueFamilyIndices {
     std::optional<uint32_t> graphicsFamily;
     std::optional<uint32_t> presentFamily;
 
-    bool isComplete() const {
+    [[nodiscard]] bool isComplete() const {
         return graphicsFamily.has_value() && presentFamily.has_value();
     }
 };
 
 struct SwapChainSupportDetails {
-    VkSurfaceCapabilitiesKHR capabilities;
+    VkSurfaceCapabilitiesKHR capabilities{};
     std::vector<VkSurfaceFormatKHR> formats;
     std::vector<VkPresentModeKHR> presentModes;
 };
@@ -58,7 +57,7 @@ public:
     return details;
   }
 
-  uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
+  [[nodiscard]] uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const {
     VkPhysicalDeviceMemoryProperties memProperties;
     vkGetPhysicalDeviceMemoryProperties(getPhysicalDevice(), &memProperties);
 
@@ -85,14 +84,14 @@ public:
     }
 
 
-    VkPhysicalDevice getPhysicalDevice() const { return physicalDevice; }
-    VkDevice getDevice() const { return device; }
-    VkQueue getGraphicsQueue() const { return graphicsQueue; }
-    VkQueue getPresentQueue() const { return presentQueue; }
-    VkSampleCountFlagBits getMsaaSamples() const { return msaaSamples; }
+    [[nodiscard]] VkPhysicalDevice getPhysicalDevice() const { return physicalDevice; }
+    [[nodiscard]] VkDevice getDevice() const { return device; }
+    [[nodiscard]] VkQueue getGraphicsQueue() const { return graphicsQueue; }
+    [[nodiscard]] VkQueue getPresentQueue() const { return presentQueue; }
+    [[nodiscard]] VkSampleCountFlagBits getMsaaSamples() const { return msaaSamples; }
 
 
-    QueueFamilyIndices getQueueFamilyIndices() const { return indices; }
+    [[nodiscard]] QueueFamilyIndices getQueueFamilyIndices() const { return indices; }
 
 private:
     VkInstance instance = VK_NULL_HANDLE;
@@ -224,7 +223,7 @@ private:
         return resultIndices;
     }
 
-    bool checkDeviceExtensionSupport(VkPhysicalDevice device) {
+    static bool checkDeviceExtensionSupport(VkPhysicalDevice device) {
         uint32_t extensionCount;
         vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
 
@@ -241,7 +240,7 @@ private:
 
 
 
-    VkSampleCountFlagBits getMaxUsableSampleCount(VkPhysicalDevice device) {
+    static VkSampleCountFlagBits getMaxUsableSampleCount(VkPhysicalDevice device) {
         VkPhysicalDeviceProperties props;
         vkGetPhysicalDeviceProperties(device, &props);
 

@@ -11,23 +11,56 @@
 
 class VulkanSwapChain {
 public:
-    // We pass references to a VulkanDevice and the surface, plus the current window dimensions:
+
     VulkanSwapChain(std::shared_ptr<VulkanDevice> device,
                     VkSurfaceKHR surface,
-                    VkRenderPass renderPass,
                     uint32_t width,
                     uint32_t height)
-        : devicePtr(device), surface(surface), renderPass(renderPass), width(width), height(height)
+        : devicePtr(device), surface(surface), width(width), height(height)
     {
         createSwapChain();
         createImageViews();
         createColorResources();
         createDepthResources();
-        createFramebuffers();
     }
 
     ~VulkanSwapChain() {
         cleanup();
+    }
+  void createFramebuffers(VkRenderPass renderPass) {
+      // Example for when you have color+depth+swapchain attachments
+      swapChainFramebuffers.resize(swapChainImageViews.size());
+
+      for (size_t i = 0; i < swapChainImageViews.size(); i++) {
+        std::array<VkImageView, 3> attachments = {
+          // 0: color
+          (devicePtr->getMsaaSamples() == VK_SAMPLE_COUNT_1_BIT)
+              ? swapChainImageViews[i]
+              : colorImageView,
+          // 1: depth
+          depthImageView,
+          // 2: if MSAA, the resolved color is the swapchain image:
+          (devicePtr->getMsaaSamples() == VK_SAMPLE_COUNT_1_BIT)
+              ? VK_NULL_HANDLE /* not used if no msaa? */
+              : swapChainImageViews[i]
+      };
+
+        // If not using MSAA, you'll have a simpler attachments array
+        // Adjust accordingly
+
+        VkFramebufferCreateInfo framebufferInfo{};
+        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebufferInfo.renderPass = renderPass;
+        framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+        framebufferInfo.pAttachments = attachments.data();
+        framebufferInfo.width = swapChainExtent.width;
+        framebufferInfo.height = swapChainExtent.height;
+        framebufferInfo.layers = 1;
+
+        if (vkCreateFramebuffer(device(), &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) {
+          throw std::runtime_error("failed to create framebuffer!");
+        }
+      }
     }
 
     // We'll expose some getters:
@@ -57,7 +90,6 @@ public:
         createImageViews();
         createColorResources();
         createDepthResources();
-        createFramebuffers();
     }
 
 private:
@@ -69,7 +101,7 @@ private:
     VkSwapchainKHR swapChain = VK_NULL_HANDLE;
     std::vector<VkImage> swapChainImages;
     VkFormat swapChainImageFormat;
-    VkExtent2D swapChainExtent;
+    VkExtent2D swapChainExtent{};
     std::vector<VkImageView> swapChainImageViews;
 
     // Possibly handle framebuffers here:
@@ -83,9 +115,7 @@ private:
     VkImage colorImage          = VK_NULL_HANDLE;
     VkDeviceMemory colorImageMemory = VK_NULL_HANDLE;
     VkImageView colorImageView  = VK_NULL_HANDLE;
-    VkRenderPass renderPass = VK_NULL_HANDLE;
 
-private:
     // Clean up the old swap chain & images
     void cleanup() {
         // Destroy framebuffers
@@ -242,41 +272,7 @@ private:
                                          1 /*mipLevels*/);
     }
 
-    void createFramebuffers() {
-        // Example for when you have color+depth+swapchain attachments
-        swapChainFramebuffers.resize(swapChainImageViews.size());
 
-        for (size_t i = 0; i < swapChainImageViews.size(); i++) {
-            std::array<VkImageView, 3> attachments = {
-                // 0: color
-                (devicePtr->getMsaaSamples() == VK_SAMPLE_COUNT_1_BIT)
-                    ? swapChainImageViews[i]
-                    : colorImageView,
-                // 1: depth
-                depthImageView,
-                // 2: if MSAA, the resolved color is the swapchain image:
-                (devicePtr->getMsaaSamples() == VK_SAMPLE_COUNT_1_BIT)
-                    ? VK_NULL_HANDLE /* not used if no msaa? */
-                    : swapChainImageViews[i]
-            };
-
-            // If not using MSAA, you'll have a simpler attachments array
-            // Adjust accordingly
-
-            VkFramebufferCreateInfo framebufferInfo{};
-            framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-            framebufferInfo.renderPass = renderPass;
-            framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
-            framebufferInfo.pAttachments = attachments.data();
-            framebufferInfo.width = swapChainExtent.width;
-            framebufferInfo.height = swapChainExtent.height;
-            framebufferInfo.layers = 1;
-
-            if (vkCreateFramebuffer(device(), &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) {
-                throw std::runtime_error("failed to create framebuffer!");
-            }
-        }
-    }
 
     // ========== Helper methods for images, formats, etc. ==========
 

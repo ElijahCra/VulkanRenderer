@@ -251,9 +251,10 @@ class HelloTriangleApplication {
   void initVulkan() {
     vulkanInstance = std::make_unique<VulkanInstance>(vulkanWindow->getGLFWwindow());
     vulkanDevice = std::make_shared<VulkanDevice>(vulkanInstance->getVkInstance(), vulkanInstance->getSurface());
-    vulkanSwapChain = std::make_unique<VulkanSwapChain>(vulkanDevice,vulkanInstance->getSurface(),renderPass,WIDTH,HEIGHT);
+    vulkanSwapChain = std::make_unique<VulkanSwapChain>(vulkanDevice,vulkanInstance->getSurface(),WIDTH,HEIGHT);
 
     createRenderPass();
+    vulkanSwapChain->createFramebuffers(renderPass);
     createDescriptorSetLayout();
     createGraphicsPipeline();
     createCommandPool();
@@ -333,6 +334,7 @@ class HelloTriangleApplication {
 
 
     createRenderPass();
+    vulkanSwapChain->createFramebuffers(renderPass);
     createGraphicsPipeline();
   }
 
