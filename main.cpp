@@ -4,6 +4,7 @@
 #include "VulkanWindow.cpp"
 #include "VulkanInstance.cpp"
 #include "VulkanDevice.cpp"
+#include "VulkanSwapChain.cpp"
 
 #include <iostream>
 #include <fstream>
@@ -20,7 +21,6 @@
 #include <set>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include "Utils.cpp"
 
 #if defined(__APPLE__)
 const bool macOS = true;
@@ -101,9 +101,22 @@ struct Vertex {
 
 class HelloTriangleApplication {
  public:
+  [[nodiscard]] uint32_t findMemoryType(const uint32_t typeFilter, VkMemoryPropertyFlags properties) const {
+    VkPhysicalDeviceMemoryProperties memProperties;
+    vkGetPhysicalDeviceMemoryProperties(vulkanDevice->getPhysicalDevice(), &memProperties);
+
+    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+      if ((typeFilter & (1 << i)) &&
+          (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+        return i;
+          }
+    }
+
+    throw std::runtime_error("failed to find suitable memory type!");
+  }
   static void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
   {
-    auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
+    auto app = static_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
     app->handleScrollInput(xoffset, yoffset);
   }
 
@@ -165,15 +178,11 @@ class HelloTriangleApplication {
  private:
   std::unique_ptr<VulkanWindow> vulkanWindow;
   std::unique_ptr<VulkanInstance> vulkanInstance;
-  std::unique_ptr<VulkanDevice> vulkanDevice;
+  std::shared_ptr<VulkanDevice> vulkanDevice;
+  std::unique_ptr<VulkanSwapChain> vulkanSwapChain;
 
 
-  VkSwapchainKHR swapChain = nullptr;
-  std::vector<VkImage> swapChainImages;
-  VkFormat swapChainImageFormat;
-  VkExtent2D swapChainExtent;
-  std::vector<VkImageView> swapChainImageViews;
-  std::vector<VkFramebuffer> swapChainFramebuffers;
+
 
   VkRenderPass renderPass = nullptr;
   VkPipelineLayout pipelineLayout = nullptr;
@@ -214,11 +223,6 @@ class HelloTriangleApplication {
   VkBuffer internalInstanceBuffer;
   VkDeviceMemory internalInstanceBufferMemory;
 
-
-  VkImage colorImage;
-  VkDeviceMemory colorImageMemory;
-  VkImageView colorImageView;
-
   uint32_t mipLevels;
   VkImage textureImage;
 
@@ -246,15 +250,12 @@ class HelloTriangleApplication {
 
   void initVulkan() {
     vulkanInstance = std::make_unique<VulkanInstance>(vulkanWindow->getGLFWwindow());
-    vulkanDevice = std::make_unique<VulkanDevice>(vulkanInstance->getVkInstance(), vulkanInstance->getSurface());
-    createSwapChain();
-    createImageViews();
+    vulkanDevice = std::make_shared<VulkanDevice>(vulkanInstance->getVkInstance(), vulkanInstance->getSurface());
+    vulkanSwapChain = std::make_unique<VulkanSwapChain>(vulkanDevice,vulkanInstance->getSurface(),renderPass,WIDTH,HEIGHT);
+
     createRenderPass();
     createDescriptorSetLayout();
     createGraphicsPipeline();
-    createColorResources();
-    createDepthResources();
-    createFramebuffers();
     createCommandPool();
     generateHexagonData();
     createVertexBuffer(edgeVertices, edgeVertexBuffer, edgeVertexBufferMemory);
@@ -278,26 +279,9 @@ class HelloTriangleApplication {
     vkDeviceWaitIdle(vulkanDevice->getDevice());
   }
 
-  void cleanupSwapChain() {
-    for (auto framebuffer : swapChainFramebuffers) {
-      vkDestroyFramebuffer(vulkanDevice->getDevice(), framebuffer, nullptr);
-    }
 
-    for (auto imageView : swapChainImageViews) {
-      vkDestroyImageView(vulkanDevice->getDevice(), imageView, nullptr);
-    }
-
-    vkDestroySwapchainKHR(vulkanDevice->getDevice(), swapChain, nullptr);
-    vkDestroyImageView(vulkanDevice->getDevice(), depthImageView, nullptr);
-    vkDestroyImage(vulkanDevice->getDevice(), depthImage, nullptr);
-    vkFreeMemory(vulkanDevice->getDevice(), depthImageMemory, nullptr);
-    vkDestroyPipeline(vulkanDevice->getDevice(), graphicsPipeline, nullptr);      // Add this line
-    vkDestroyPipelineLayout(vulkanDevice->getDevice(), pipelineLayout, nullptr);  // Add this line
-    vkDestroyRenderPass(vulkanDevice->getDevice(), renderPass, nullptr);
-  }
 
   void cleanup() {
-    cleanupSwapChain();
 
     vkDestroyBuffer(vulkanDevice->getDevice(), edgeVertexBuffer, nullptr);
     vkFreeMemory(vulkanDevice->getDevice(), edgeVertexBufferMemory, nullptr);
@@ -313,9 +297,6 @@ class HelloTriangleApplication {
     vkDestroyBuffer(vulkanDevice->getDevice(), internalInstanceBuffer, nullptr);
     vkFreeMemory(vulkanDevice->getDevice(), internalInstanceBufferMemory, nullptr);
 
-    vkDestroyImageView(vulkanDevice->getDevice(), colorImageView, nullptr);
-    vkDestroyImage(vulkanDevice->getDevice(), colorImage, nullptr);
-    vkFreeMemory(vulkanDevice->getDevice(), colorImageMemory, nullptr);
 
     vkDestroyPipeline(vulkanDevice->getDevice(), graphicsPipeline, nullptr);
     vkDestroyPipelineLayout(vulkanDevice->getDevice(), pipelineLayout, nullptr);
@@ -346,19 +327,13 @@ class HelloTriangleApplication {
       glfwGetFramebufferSize(vulkanWindow->getGLFWwindow(), &width, &height);
       glfwWaitEvents();
     }
-
     vkDeviceWaitIdle(vulkanDevice->getDevice());
 
-    cleanupSwapChain();
+    vulkanSwapChain->recreate(width, height);
 
-    createSwapChain();
-    createImageViews();
+
     createRenderPass();
     createGraphicsPipeline();
-    createImageViews();
-    createColorResources();
-    createDepthResources();
-    createFramebuffers();
   }
 
   void prepareInstanceData() {
@@ -411,85 +386,13 @@ class HelloTriangleApplication {
   }
 
 
-  void createSwapChain() {
-    SwapChainSupportDetails swapChainSupport = querySwapChainSupport(vulkanDevice->getPhysicalDevice());
 
-    VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
-    VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
-    VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
 
-    uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
-    if (swapChainSupport.capabilities.maxImageCount > 0 && imageCount > swapChainSupport.capabilities.maxImageCount) {
-      imageCount = swapChainSupport.capabilities.maxImageCount;
-    }
 
-    VkSwapchainCreateInfoKHR createInfo{};
-    createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-    createInfo.surface = vulkanInstance->getSurface();
-
-    createInfo.minImageCount = imageCount;
-    createInfo.imageFormat = surfaceFormat.format;
-    createInfo.imageColorSpace = surfaceFormat.colorSpace;
-    createInfo.imageExtent = extent;
-    createInfo.imageArrayLayers = 1;
-    createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-
-    QueueFamilyIndices indices = findQueueFamilies(vulkanDevice->getPhysicalDevice());
-    uint32_t queueFamilyIndices[] = {indices.graphicsFamily.value(), indices.presentFamily.value()};
-
-    if (indices.graphicsFamily != indices.presentFamily) {
-      createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
-      createInfo.queueFamilyIndexCount = 2;
-      createInfo.pQueueFamilyIndices = queueFamilyIndices;
-    } else {
-      createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    }
-
-    createInfo.preTransform = swapChainSupport.capabilities.currentTransform;
-    createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-    createInfo.presentMode = presentMode;
-    createInfo.clipped = VK_TRUE;
-
-    if (vkCreateSwapchainKHR(vulkanDevice->getDevice(), &createInfo, nullptr, &swapChain) != VK_SUCCESS) {
-      throw std::runtime_error("failed to create swap chain!");
-    }
-
-    vkGetSwapchainImagesKHR(vulkanDevice->getDevice(), swapChain, &imageCount, nullptr);
-    swapChainImages.resize(imageCount);
-    vkGetSwapchainImagesKHR(vulkanDevice->getDevice(), swapChain, &imageCount, swapChainImages.data());
-
-    swapChainImageFormat = surfaceFormat.format;
-    swapChainExtent = extent;
-  }
-
-  void createImageViews() {
-    swapChainImageViews.resize(swapChainImages.size());
-
-    for (size_t i = 0; i < swapChainImages.size(); i++) {
-      VkImageViewCreateInfo createInfo{};
-      createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-      createInfo.image = swapChainImages[i];
-      createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-      createInfo.format = swapChainImageFormat;
-      createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-      createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-      createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-      createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-      createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-      createInfo.subresourceRange.baseMipLevel = 0;
-      createInfo.subresourceRange.levelCount = 1;
-      createInfo.subresourceRange.baseArrayLayer = 0;
-      createInfo.subresourceRange.layerCount = 1;
-
-      if (vkCreateImageView(vulkanDevice->getDevice(), &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create image views!");
-      }
-    }
-  }
 
   void createRenderPass() {
     VkAttachmentDescription colorAttachment{};
-    colorAttachment.format = swapChainImageFormat;
+    colorAttachment.format = vulkanSwapChain->getImageFormat();
     colorAttachment.samples = vulkanDevice->getMsaaSamples();
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -503,7 +406,7 @@ class HelloTriangleApplication {
     colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
     VkAttachmentDescription colorAttachmentResolve{};
-    colorAttachmentResolve.format = swapChainImageFormat;
+    colorAttachmentResolve.format = vulkanSwapChain->getImageFormat();
     colorAttachmentResolve.samples = VK_SAMPLE_COUNT_1_BIT;
     colorAttachmentResolve.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     colorAttachmentResolve.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -565,11 +468,6 @@ class HelloTriangleApplication {
     }
   }
 
-  void createDepthResources() {
-    VkFormat depthFormat = findDepthFormat();
-    createImage(swapChainExtent.width, swapChainExtent.height, vulkanDevice->getMsaaSamples(), depthFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage, depthImageMemory);
-    depthImageView = createImageView(depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
-  }
 
   VkFormat findDepthFormat() {
     return findSupportedFormat(
@@ -653,10 +551,6 @@ class HelloTriangleApplication {
 
     throw std::runtime_error("failed to find supported format!");
   }
-
-  VkImage depthImage;
-  VkDeviceMemory depthImageMemory;
-  VkImageView depthImageView;
 
 
 
@@ -815,31 +709,6 @@ class HelloTriangleApplication {
     vkDestroyShaderModule(vulkanDevice->getDevice(), vertShaderModule, nullptr);
   }
 
-  void createFramebuffers() {
-    swapChainFramebuffers.resize(swapChainImageViews.size());
-
-    for (size_t i = 0; i < swapChainImageViews.size(); i++) {
-      std::array<VkImageView, 3> attachments = {
-            colorImageView,
-            depthImageView,
-            swapChainImageViews[i]
-    };
-
-      VkFramebufferCreateInfo framebufferInfo{};
-      framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-      framebufferInfo.renderPass = renderPass;
-      framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
-      framebufferInfo.pAttachments = attachments.data();
-      framebufferInfo.width = swapChainExtent.width;
-      framebufferInfo.height = swapChainExtent.height;
-      framebufferInfo.layers = 1;
-
-      if (vkCreateFramebuffer(vulkanDevice->getDevice(), &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create framebuffer!");
-      }
-    }
-  }
-
   void createCommandPool() {
     QueueFamilyIndices queueFamilyIndices = findQueueFamilies(vulkanDevice->getPhysicalDevice());
 
@@ -853,12 +722,6 @@ class HelloTriangleApplication {
     }
   }
 
-  void createColorResources() {
-    VkFormat colorFormat = swapChainImageFormat;
-
-    createImage(swapChainExtent.width, swapChainExtent.height, vulkanDevice->getMsaaSamples(), colorFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, colorImage, colorImageMemory);
-    colorImageView = createImageView(colorImage, colorFormat, VK_IMAGE_ASPECT_COLOR_BIT);
-  }
 
 void generateHexagonData() {
     // Generate mesh for edge hexagons (with sides)
@@ -1362,9 +1225,9 @@ static void offsetNVertSurfaceWithCenter(
     VkRenderPassBeginInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     renderPassInfo.renderPass = renderPass;
-    renderPassInfo.framebuffer = swapChainFramebuffers[imageIndex];
+    renderPassInfo.framebuffer = vulkanSwapChain->getFramebuffers()[imageIndex];
     renderPassInfo.renderArea.offset = {0, 0};
-    renderPassInfo.renderArea.extent = swapChainExtent;
+    renderPassInfo.renderArea.extent = vulkanSwapChain->getExtent();
 
     std::array<VkClearValue, 2> clearValues{};
     clearValues[0].color = { {0.1f, 0.1f, 0.1f, 1.0f} }; // Clear color
@@ -1384,15 +1247,15 @@ static void offsetNVertSurfaceWithCenter(
     VkViewport viewport{};
     viewport.x = 0.0f;
     viewport.y = 0.0f;
-    viewport.width = (float) swapChainExtent.width;
-    viewport.height = (float) swapChainExtent.height;
+    viewport.width = (float) vulkanSwapChain->getExtent().width;
+    viewport.height = (float) vulkanSwapChain->getExtent().height;
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
     vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
     VkRect2D scissor{};
     scissor.offset = {0, 0};
-    scissor.extent = swapChainExtent;
+    scissor.extent = vulkanSwapChain->getExtent();
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
     // Draw edge hexagons
@@ -1452,7 +1315,7 @@ static void offsetNVertSurfaceWithCenter(
 
     uint32_t imageIndex;
     VkResult result =
-        vkAcquireNextImageKHR(vulkanDevice->getDevice(), swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE,
+        vkAcquireNextImageKHR(vulkanDevice->getDevice(), vulkanSwapChain->getSwapChain(), UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE,
                               &imageIndex);
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR) {
@@ -1493,7 +1356,7 @@ static void offsetNVertSurfaceWithCenter(
     presentInfo.waitSemaphoreCount = 1;
     presentInfo.pWaitSemaphores = signalSemaphores;
 
-    VkSwapchainKHR swapChains[] = {swapChain};
+    VkSwapchainKHR swapChains[] = {vulkanSwapChain->getSwapChain()};
     presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains = swapChains;
 
@@ -1530,7 +1393,7 @@ static void offsetNVertSurfaceWithCenter(
         glm::vec3(0.0f, 1.0f, 0.0f));   //Up vector
 
     ubo.proj = glm::perspective(glm::radians(fov),
-                                swapChainExtent.width / (float)swapChainExtent.height,
+                                vulkanSwapChain->getExtent().width / (float)vulkanSwapChain->getExtent().height,
                                 0.1f, 500.0f);
     //std::cout << "\n Camera Position: (" << cameraPos.x << ", " << cameraPos.y << ", " << cameraPos.z << ")\n";
     //std::cout << "FOV: " << fov << "\n";
@@ -1555,71 +1418,6 @@ static void offsetNVertSurfaceWithCenter(
     return shaderModule;
   }
 
-  VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
-    for (const auto& availableFormat : availableFormats) {
-      if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB &&
-          availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-        return availableFormat;
-      }
-    }
-
-    return availableFormats[0];
-  }
-
-  VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
-    for (const auto& availablePresentMode : availablePresentModes) {
-      if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
-        return availablePresentMode;
-      }
-    }
-
-    return VK_PRESENT_MODE_FIFO_KHR;
-  }
-
-  VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
-    if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
-      return capabilities.currentExtent;
-    } else {
-      int width, height;
-      glfwGetFramebufferSize(vulkanWindow->getGLFWwindow(), &width, &height);
-
-      VkExtent2D actualExtent = {
-          static_cast<uint32_t>(width),
-          static_cast<uint32_t>(height)
-      };
-
-      actualExtent.width =
-          std::clamp(actualExtent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
-      actualExtent.height =
-          std::clamp(actualExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
-
-      return actualExtent;
-    }
-  }
-
-  SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device) {
-    SwapChainSupportDetails details;
-
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, vulkanInstance->getSurface(), &details.capabilities);
-
-    uint32_t formatCount;
-    vkGetPhysicalDeviceSurfaceFormatsKHR(device, vulkanInstance->getSurface(), &formatCount, nullptr);
-
-    if (formatCount != 0) {
-      details.formats.resize(formatCount);
-      vkGetPhysicalDeviceSurfaceFormatsKHR(device, vulkanInstance->getSurface(), &formatCount, details.formats.data());
-    }
-
-    uint32_t presentModeCount;
-    vkGetPhysicalDeviceSurfacePresentModesKHR(device, vulkanInstance->getSurface(), &presentModeCount, nullptr);
-
-    if (presentModeCount != 0) {
-      details.presentModes.resize(presentModeCount);
-      vkGetPhysicalDeviceSurfacePresentModesKHR(device, vulkanInstance->getSurface(), &presentModeCount, details.presentModes.data());
-    }
-
-    return details;
-  }
 
   bool isDeviceSuitable(VkPhysicalDevice device) {
     QueueFamilyIndices indices = findQueueFamilies(device);
@@ -1628,7 +1426,7 @@ static void offsetNVertSurfaceWithCenter(
 
     bool swapChainAdequate = false;
     if (extensionsSupported) {
-      SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
+      SwapChainSupportDetails swapChainSupport = vulkanDevice->querySwapChainSupport(device);
       swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
     }
 

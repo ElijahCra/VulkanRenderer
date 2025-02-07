@@ -14,17 +14,18 @@ extern const bool enableValidationLayers;
 extern const std::vector<const char*> validationLayers;
 extern const bool macOS;
 
-VkResult CreateDebugUtilsMessengerEXT(VkInstance instance,
+
+
+class VulkanInstance {
+public:
+  VkResult CreateDebugUtilsMessengerEXT(VkInstance instance,
                                       const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
                                       const VkAllocationCallbacks* pAllocator,
                                       VkDebugUtilsMessengerEXT* pDebugMessenger);
 
-void DestroyDebugUtilsMessengerEXT(VkInstance instance,
-                                   VkDebugUtilsMessengerEXT debugMessenger,
-                                   const VkAllocationCallbacks* pAllocator);
-
-class VulkanInstance {
-public:
+  void DestroyDebugUtilsMessengerEXT(VkInstance instance,
+                                     VkDebugUtilsMessengerEXT debugMessenger,
+                                     const VkAllocationCallbacks* pAllocator);
     explicit VulkanInstance(GLFWwindow* window) : window(window) {
         createInstance();
         setupDebugMessenger();

@@ -14,9 +14,10 @@ public:
     // We pass references to a VulkanDevice and the surface, plus the current window dimensions:
     VulkanSwapChain(std::shared_ptr<VulkanDevice> device,
                     VkSurfaceKHR surface,
+                    VkRenderPass renderPass,
                     uint32_t width,
                     uint32_t height)
-        : devicePtr(device), surface(surface), width(width), height(height)
+        : devicePtr(device), surface(surface), renderPass(renderPass), width(width), height(height)
     {
         createSwapChain();
         createImageViews();
@@ -82,6 +83,7 @@ private:
     VkImage colorImage          = VK_NULL_HANDLE;
     VkDeviceMemory colorImageMemory = VK_NULL_HANDLE;
     VkImageView colorImageView  = VK_NULL_HANDLE;
+    VkRenderPass renderPass = VK_NULL_HANDLE;
 
 private:
     // Clean up the old swap chain & images
@@ -263,7 +265,7 @@ private:
 
             VkFramebufferCreateInfo framebufferInfo{};
             framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-            framebufferInfo.renderPass = /* pass in or store a reference to your render pass */;
+            framebufferInfo.renderPass = renderPass;
             framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
             framebufferInfo.pAttachments = attachments.data();
             framebufferInfo.width = swapChainExtent.width;
