@@ -38,29 +38,7 @@ public:
         }
     }
 
-    VkPipeline getPipeline() const { return pipeline; }
-    VkPipelineLayout getLayout() const { return pipelineLayout; }
-
-private:
-    VkDevice device = VK_NULL_HANDLE;
-    VkPipeline pipeline = VK_NULL_HANDLE;
-    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
-
-private:
-    void createPipelineLayout(VkDescriptorSetLayout descriptorSetLayout) {
-        // For a simple pipeline, you might just do:
-        VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
-        pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        pipelineLayoutInfo.setLayoutCount = 1;
-        pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
-        pipelineLayoutInfo.pushConstantRangeCount = 0;
-
-        if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create pipeline layout!");
-        }
-    }
-
-    void createGraphicsPipeline(
+   void createGraphicsPipeline(
         VkRenderPass renderPass,
         VkSampleCountFlagBits msaaSamples,
         const std::string& vertShaderPath,
@@ -195,6 +173,30 @@ private:
         vkDestroyShaderModule(device, fragShaderModule, nullptr);
         vkDestroyShaderModule(device, vertShaderModule, nullptr);
     }
+
+    VkPipeline getPipeline() const { return pipeline; }
+    VkPipelineLayout getLayout() const { return pipelineLayout; }
+
+private:
+    VkDevice device = VK_NULL_HANDLE;
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+
+private:
+    void createPipelineLayout(VkDescriptorSetLayout descriptorSetLayout) {
+        // For a simple pipeline, you might just do:
+        VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+        pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipelineLayoutInfo.setLayoutCount = 1;
+        pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
+        pipelineLayoutInfo.pushConstantRangeCount = 0;
+
+        if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create pipeline layout!");
+        }
+    }
+
+
 
     // Helper to load a file
     static std::vector<char> readFile(const std::string& filename) {

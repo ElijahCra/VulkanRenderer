@@ -7,6 +7,8 @@
 #include <GLFW/glfw3.h>
 #include <stdexcept>
 #include <functional>
+#include <glm/glm.hpp>
+#include <glm/ext/scalar_constants.hpp>
 
 class VulkanWindow {
 public:
@@ -32,17 +34,37 @@ public:
         return window;
     }
 
-    void setFramebufferResizeCallback(std::function<void(int, int)> callback) {
-        framebufferResizeCallbackFn = callback;
+
+  void handleScrollInput(double xoffset, double yoffset) {
+      const float fovIncrement = 1.0f;
+      fov += fovIncrement*yoffset;
+      if (fov > 45.0f) fov = 45.0f;
+      if (fov < 1) fov = 1.0f;
     }
 
-    void setKeyCallback(std::function<void(int, int)> callback) {
-        keyCallbackFn = callback;
+  void handleKeyInput(int key, int action) {
+      if (action == GLFW_PRESS || action == GLFW_REPEAT) {
+        constexpr float angleIncrement = 0.1f;
+
+        if (key == GLFW_KEY_LEFT) {
+          cameraAngleX -= angleIncrement;
+
+        } else if (key == GLFW_KEY_RIGHT) {
+          cameraAngleX += angleIncrement;
+        } else if (key == GLFW_KEY_UP) {
+          cameraAngleY += angleIncrement;
+          if (cameraAngleY > glm::pi<float>() - 0.01f) cameraAngleY = glm::pi<float>() - 0.01f;
+        } else if (key == GLFW_KEY_DOWN) {
+          cameraAngleY -= angleIncrement;
+          if (cameraAngleY < 0.01f) cameraAngleY = 0.01f;
+        }
+      }
     }
 
-    void setScrollCallback(std::function<void(double, double)> callback) {
-        scrollCallbackFn = callback;
-    }
+  float cameraAngleX = 0.0f;
+  float cameraAngleY = glm::radians(90.0f);
+  float radius = 20.0f;
+  float fov = 5.0f;
 
 
 
@@ -62,20 +84,20 @@ private:
             self->framebufferResizeCallbackFn(newWidth, newHeight);
         }
     }
-
-    static void keyCallbackProxy(GLFWwindow* window, int key, int scancode, int action, int mods) {
-        auto self = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
-        if (self->keyCallbackFn) {
-            self->keyCallbackFn(key, action);
-        }
+  static void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
+    {
+      auto app = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
+      app->handleScrollInput(xoffset, yoffset);
     }
-
-    static void scrollCallbackProxy(GLFWwindow* window, double xoffset, double yoffset) {
-        auto self = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
-        if (self->scrollCallbackFn) {
-            self->scrollCallbackFn(xoffset, yoffset);
-        }
+  static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+      auto app = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
+      app->handleKeyInput(key, action);
     }
+  static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
+      auto app = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
+      app->framebufferResized = true;
+    }
+  bool framebufferResized = false;
 
     void initWindow() {
         if (!glfwInit()) {
@@ -91,8 +113,8 @@ private:
         glfwSetWindowUserPointer(window, this);
 
         glfwSetFramebufferSizeCallback(window, framebufferResizeCallbackProxy);
-        glfwSetKeyCallback(window, keyCallbackProxy);
-        glfwSetScrollCallback(window, scrollCallbackProxy);
+      glfwSetKeyCallback(window, keyCallback);
+      glfwSetScrollCallback(window, scroll_callback);
     }
 
     void cleanup() {

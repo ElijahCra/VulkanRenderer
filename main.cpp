@@ -7,6 +7,7 @@
 #include "VulkanSwapChain.cpp"
 #include "VulkanRenderPass.cpp"
 #include "VulkanPipeline.cpp"
+#include "VulkanDescriptor.cpp"
 #include "Util.cpp"
 
 #include <iostream>
@@ -66,61 +67,15 @@ class HelloTriangleApplication {
 
     throw std::runtime_error("failed to find suitable memory type!");
   }
-  static void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
-  {
-    auto app = static_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
-    app->handleScrollInput(xoffset, yoffset);
-  }
 
-  void handleScrollInput(double xoffset, double yoffset) {
-    const float fovIncrement = 1.0f;
-    fov += fovIncrement*yoffset;
-    if (fov > 45.0f) fov = 45.0f;
-    if (fov < 1) fov = 1.0f;
-  }
 
-  static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-    auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
-    app->handleKeyInput(key, action);
-  }
 
-  void handleKeyInput(int key, int action) {
-    if (action == GLFW_PRESS || action == GLFW_REPEAT) {
-      constexpr float angleIncrement = 0.1f;
 
-      if (key == GLFW_KEY_LEFT) {
-        cameraAngleX -= angleIncrement;
 
-      } else if (key == GLFW_KEY_RIGHT) {
-        cameraAngleX += angleIncrement;
-      } else if (key == GLFW_KEY_UP) {
-        cameraAngleY += angleIncrement;
-        if (cameraAngleY > glm::pi<float>() - 0.01f) cameraAngleY = glm::pi<float>() - 0.01f;
-      } else if (key == GLFW_KEY_DOWN) {
-        cameraAngleY -= angleIncrement;
-        if (cameraAngleY < 0.01f) cameraAngleY = 0.01f;
-      }
-    }
-  }
+
+
   void run() {
     vulkanWindow = std::make_unique<VulkanWindow>(WIDTH, HEIGHT, "Vulkan");
-    vulkanWindow->setFramebufferResizeCallback(
-    [this](int newWidth, int newHeight) {
-        this->framebufferResized = true;
-    }
-);
-
-    vulkanWindow->setKeyCallback(
-        [this](int key, int action) {
-            this->handleKeyInput(key, action);
-        }
-    );
-
-    vulkanWindow->setScrollCallback(
-        [this](double xoffset, double yoffset) {
-            this->handleScrollInput(xoffset, yoffset);
-        }
-    );
 
     initVulkan();
     mainLoop();
@@ -128,12 +83,13 @@ class HelloTriangleApplication {
   }
 
  private:
-  std::unique_ptr<VulkanWindow> vulkanWindow;
+  std::shared_ptr<VulkanWindow> vulkanWindow;
   std::unique_ptr<VulkanInstance> vulkanInstance;
   std::shared_ptr<VulkanDevice> vulkanDevice;
-  std::unique_ptr<VulkanSwapChain> vulkanSwapChain;
+  std::shared_ptr<VulkanSwapChain> vulkanSwapChain;
   std::unique_ptr<VulkanRenderPass> vulkanRenderPass;
   std::unique_ptr<VulkanPipeline> vulkanPipeline;
+  std::unique_ptr<VulkanDescriptors> vulkanDescriptors;
 
 
   VkCommandPool commandPool = nullptr;
@@ -178,10 +134,7 @@ class HelloTriangleApplication {
   const int GRID_HEIGHT = 10;
   const int instanceCount = GRID_WIDTH * GRID_HEIGHT;
 
-  float cameraAngleX = 0.0f;
-  float cameraAngleY = glm::radians(90.0f);
-  float radius = 20.0f;
-  float fov = 5.0f;
+
 
   struct UniformBufferObject {
     glm::mat4 model;
@@ -192,18 +145,21 @@ class HelloTriangleApplication {
   std::vector<VkBuffer> uniformBuffers;
   std::vector<VkDeviceMemory> uniformBuffersMemory;
 
-  VkDescriptorSetLayout descriptorSetLayout = nullptr;
-  VkDescriptorPool descriptorPool = nullptr;
-  std::vector<VkDescriptorSet> descriptorSets;
-
   void initVulkan() {
     vulkanInstance = std::make_unique<VulkanInstance>(vulkanWindow->getGLFWwindow());
     vulkanDevice = std::make_shared<VulkanDevice>(vulkanInstance->getVkInstance(), vulkanInstance->getSurface());
     vulkanSwapChain = std::make_unique<VulkanSwapChain>(vulkanDevice,vulkanInstance->getSurface(),WIDTH,HEIGHT);
     vulkanRenderPass = std::make_unique<VulkanRenderPass>(vulkanDevice,vulkanSwapChain->getImageFormat(),vulkanDevice->getMsaaSamples(),findDepthFormat());
     vulkanSwapChain->createFramebuffers(vulkanRenderPass->getHandle());
-    createDescriptorSetLayout();
-    createGraphicsPipeline();
+    vulkanDescriptors = std::make_unique<VulkanDescriptors>(vulkanDevice,vulkanSwapChain,vulkanWindow, MAX_FRAMES_IN_FLIGHT);
+    vulkanPipeline = std::make_unique<VulkanPipeline>(
+        vulkanDevice->getDevice(),
+        vulkanRenderPass->getHandle(),
+        vulkanDescriptors->getDescriptorSetLayout(),
+        vulkanDevice->getMsaaSamples(),
+        "../shaders/vert.spv",
+        "../shaders/frag.spv"
+    );
     createCommandPool();
     generateHexagonData();
     createVertexBuffer(edgeVertices, edgeVertexBuffer, edgeVertexBufferMemory);
@@ -211,9 +167,6 @@ class HelloTriangleApplication {
     createVertexBuffer(internalVertices, internalVertexBuffer, internalVertexBufferMemory);
     createIndexBuffer(internalIndices, internalIndexBuffer, internalIndexBufferMemory);
     prepareInstanceData();
-    createUniformBuffers();
-    createDescriptorPool();
-    createDescriptorSets();
     createCommandBuffers();
     createSyncObjects();
   }
@@ -245,9 +198,6 @@ class HelloTriangleApplication {
     vkDestroyBuffer(vulkanDevice->getDevice(), internalInstanceBuffer, nullptr);
     vkFreeMemory(vulkanDevice->getDevice(), internalInstanceBufferMemory, nullptr);
 
-    vkDestroyDescriptorSetLayout(vulkanDevice->getDevice(), descriptorSetLayout, nullptr);
-    vkDestroyDescriptorPool(vulkanDevice->getDevice(), descriptorPool, nullptr);
-
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
       vkDestroySemaphore(vulkanDevice->getDevice(), renderFinishedSemaphores[i], nullptr);
       vkDestroySemaphore(vulkanDevice->getDevice(), imageAvailableSemaphores[i], nullptr);
@@ -277,7 +227,7 @@ class HelloTriangleApplication {
 
     vulkanRenderPass->createRenderPass(vulkanSwapChain->getImageFormat(),vulkanDevice->getMsaaSamples(),findDepthFormat());
     vulkanSwapChain->createFramebuffers(vulkanRenderPass->getHandle());
-    createGraphicsPipeline();
+    vulkanPipeline->createGraphicsPipeline(vulkanRenderPass->getHandle(),vulkanDevice->getMsaaSamples(),"../shaders/vert.spv","../shaders/frag.spv");
   }
 
   void prepareInstanceData() {
@@ -321,7 +271,7 @@ class HelloTriangleApplication {
 
   void createInstanceBuffer(const std::vector<InstanceData>& instanceData, VkBuffer& buffer, VkDeviceMemory& bufferMemory) {
     VkDeviceSize bufferSize = sizeof(InstanceData) * instanceData.size();
-    createBuffer(bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, buffer, bufferMemory);
+    vulkanDevice->createBuffer(bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, buffer, bufferMemory);
 
     void* data;
     vkMapMemory(vulkanDevice->getDevice(), bufferMemory, 0, bufferSize, 0, &data);
@@ -412,37 +362,6 @@ class HelloTriangleApplication {
     }
 
     throw std::runtime_error("failed to find supported format!");
-  }
-
-  void createGraphicsPipeline() {
-    vulkanPipeline = std::make_unique<VulkanPipeline>(
-        vulkanDevice->getDevice(),
-        vulkanRenderPass->getHandle(),
-        descriptorSetLayout,
-        vulkanDevice->getMsaaSamples(),
-        "../shaders/vert.spv",
-        "../shaders/frag.spv"
-    );
-  }
-
-
-
-  void createDescriptorSetLayout() {
-    VkDescriptorSetLayoutBinding uboLayoutBinding{};
-    uboLayoutBinding.binding = 0;
-    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    uboLayoutBinding.descriptorCount = 1;
-    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-    uboLayoutBinding.pImmutableSamplers = nullptr;
-
-    VkDescriptorSetLayoutCreateInfo layoutInfo{};
-    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfo.bindingCount = 1;
-    layoutInfo.pBindings = &uboLayoutBinding;
-
-    if (vkCreateDescriptorSetLayout(vulkanDevice->getDevice(), &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
-      throw std::runtime_error("failed to create descriptor set layout!");
-    }
   }
 
   void createCommandPool() {
@@ -844,98 +763,6 @@ static void offsetNVertSurfaceWithCenter(
     vkUnmapMemory(vulkanDevice->getDevice(), indexBufferMemory);
   }
 
-  void createUniformBuffers() {
-    VkDeviceSize bufferSize = sizeof(UniformBufferObject);
-
-    uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-    uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
-
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-      createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                   uniformBuffers[i], uniformBuffersMemory[i]);
-    }
-  }
-
-  void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties,
-                  VkBuffer& buffer, VkDeviceMemory& bufferMemory) {
-    VkBufferCreateInfo bufferInfo{};
-    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.size = size;
-    bufferInfo.usage = usage;
-    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    if (vkCreateBuffer(vulkanDevice->getDevice(), &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
-      throw std::runtime_error("failed to create buffer!");
-    }
-
-    VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(vulkanDevice->getDevice(), buffer, &memRequirements);
-
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
-
-    if (vkAllocateMemory(vulkanDevice->getDevice(), &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
-      throw std::runtime_error("failed to allocate buffer memory!");
-    }
-
-    vkBindBufferMemory(vulkanDevice->getDevice(), buffer, bufferMemory, 0);
-  }
-
-
-  void createDescriptorPool() {
-    VkDescriptorPoolSize poolSize{};
-    poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSize.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-
-    VkDescriptorPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.poolSizeCount = 1;
-    poolInfo.pPoolSizes = &poolSize;
-    poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-
-    if (vkCreateDescriptorPool(vulkanDevice->getDevice(), &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
-      throw std::runtime_error("failed to create descriptor pool!");
-    }
-  }
-
-  void createDescriptorSets() {
-    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
-    VkDescriptorSetAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocInfo.descriptorPool = descriptorPool;
-    allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-    allocInfo.pSetLayouts = layouts.data();
-
-    descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
-    if (vkAllocateDescriptorSets(vulkanDevice->getDevice(), &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
-      throw std::runtime_error("failed to allocate descriptor sets!");
-    }
-
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-      VkDescriptorBufferInfo bufferInfo{};
-      bufferInfo.buffer = uniformBuffers[i];
-      bufferInfo.offset = 0;
-      bufferInfo.range = sizeof(UniformBufferObject);
-
-      VkWriteDescriptorSet descriptorWrite{};
-      descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-      descriptorWrite.dstSet = descriptorSets[i];
-      descriptorWrite.dstBinding = 0;
-      descriptorWrite.dstArrayElement = 0;
-      descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-      descriptorWrite.descriptorCount = 1;
-      descriptorWrite.pBufferInfo = &bufferInfo;
-
-      vkUpdateDescriptorSets(vulkanDevice->getDevice(), 1, &descriptorWrite, 0, nullptr);
-    }
-  }
-
-
-
-
   void createCommandBuffers() {
     commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
 
@@ -978,7 +805,7 @@ static void offsetNVertSurfaceWithCenter(
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vulkanPipeline->getPipeline());
 
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vulkanPipeline->getLayout(),
-                            0, 1, &descriptorSets[currentFrame], 0, nullptr);
+                            0, 1, &vulkanDescriptors->getDescriptorSets()[currentFrame], 0, nullptr);
 
     VkViewport viewport{};
     viewport.x = 0.0f;
@@ -1060,7 +887,7 @@ static void offsetNVertSurfaceWithCenter(
     } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
       throw std::runtime_error("failed to acquire swap chain image!");
     }
-    updateUniformBuffer(currentFrame);
+    vulkanDescriptors->updateUniformBuffer(currentFrame);
     vkResetFences(vulkanDevice->getDevice(), 1, &inFlightFences[currentFrame]);
 
     vkResetCommandBuffer(commandBuffers[currentFrame], /*VkCommandBufferResetFlagBits*/ 0);
@@ -1111,35 +938,6 @@ static void offsetNVertSurfaceWithCenter(
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
   }
 
-  void updateUniformBuffer(uint32_t currentImage) {
-    UniformBufferObject ubo{};
-    ubo.model = glm::mat4(1.0f); // No rotation
-
-    float theta = cameraAngleX; // Azimuthal angle
-    float phi = cameraAngleY;   // Polar angle
-
-    glm::vec3 cameraPos;
-    cameraPos.x = radius * sin(phi) * sin(theta);
-    cameraPos.y = radius * cos(phi);
-    cameraPos.z = radius * sin(phi) * cos(theta);
-
-    ubo.view = glm::lookAt(
-        cameraPos, // viewpoint
-        glm::vec3(0.0f, 0.0f, 0.0f),    //origin
-        glm::vec3(0.0f, 1.0f, 0.0f));   //Up vector
-
-    ubo.proj = glm::perspective(glm::radians(fov),
-                                vulkanSwapChain->getExtent().width / (float)vulkanSwapChain->getExtent().height,
-                                0.1f, 500.0f);
-    //std::cout << "\n Camera Position: (" << cameraPos.x << ", " << cameraPos.y << ", " << cameraPos.z << ")\n";
-    //std::cout << "FOV: " << fov << "\n";
-
-    void* data;
-    vkMapMemory(vulkanDevice->getDevice(), uniformBuffersMemory[currentImage], 0, sizeof(ubo), 0, &data);
-    memcpy(data, &ubo, sizeof(ubo));
-    vkUnmapMemory(vulkanDevice->getDevice(), uniformBuffersMemory[currentImage]);
-  }
-
   VkShaderModule createShaderModule(const std::vector<char>& code) {
     VkShaderModuleCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -1158,7 +956,7 @@ static void offsetNVertSurfaceWithCenter(
   bool isDeviceSuitable(VkPhysicalDevice device) {
     QueueFamilyIndices indices = findQueueFamilies(device);
 
-    bool extensionsSupported = checkDeviceExtensionSupport(device);
+    bool extensionsSupported = vulkanDevice->checkDeviceExtensionSupport(device);
 
     bool swapChainAdequate = false;
     if (extensionsSupported) {
@@ -1167,22 +965,6 @@ static void offsetNVertSurfaceWithCenter(
     }
 
     return indices.isComplete() && extensionsSupported && swapChainAdequate;
-  }
-
-  bool checkDeviceExtensionSupport(VkPhysicalDevice device) {
-    uint32_t extensionCount;
-    vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
-
-    std::vector<VkExtensionProperties> availableExtensions(extensionCount);
-    vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
-
-    std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
-
-    for (const auto& extension : availableExtensions) {
-      requiredExtensions.erase(extension.extensionName);
-    }
-
-    return requiredExtensions.empty();
   }
 
   QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) {
