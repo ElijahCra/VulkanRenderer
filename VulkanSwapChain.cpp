@@ -80,6 +80,14 @@ public:
     VkImage getColorImage() const { return colorImage; }
     VkDeviceMemory getColorImageMemory() const { return colorImageMemory; }
 
+  VkFormat findDepthFormat() {
+      return findSupportedFormat(
+          {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT},
+          VK_IMAGE_TILING_OPTIMAL,
+          VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+      );
+    }
+
     // The recreate function for window resizing
     void recreate(uint32_t newWidth, uint32_t newHeight) {
         width = newWidth;
@@ -272,17 +280,6 @@ private:
                                          1 /*mipLevels*/);
     }
 
-
-
-    // ========== Helper methods for images, formats, etc. ==========
-
-    VkFormat findDepthFormat() {
-        return findSupportedFormat(
-            {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT},
-            VK_IMAGE_TILING_OPTIMAL,
-            VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
-        );
-    }
 
     VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates,
                                 VkImageTiling tiling,

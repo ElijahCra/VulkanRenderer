@@ -84,6 +84,38 @@ public:
     vkBindBufferMemory(device, buffer, bufferMemory, 0);
   }
 
+  QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) {
+    QueueFamilyIndices resultIndices;
+
+    uint32_t queueFamilyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+
+    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+
+    int i = 0;
+    for (const auto& queueFamily : queueFamilies) {
+
+      if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+        resultIndices.graphicsFamily = i;
+      }
+
+
+      VkBool32 presentSupport = false;
+      vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
+      if (presentSupport) {
+        resultIndices.presentFamily = i;
+      }
+
+      if (resultIndices.isComplete()) {
+        break;
+      }
+      i++;
+    }
+
+    return resultIndices;
+  }
+
   [[nodiscard]] uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const {
     VkPhysicalDeviceMemoryProperties memProperties;
     vkGetPhysicalDeviceMemoryProperties(getPhysicalDevice(), &memProperties);
@@ -232,37 +264,7 @@ private:
     }
 
 
-    QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) {
-        QueueFamilyIndices resultIndices;
 
-        uint32_t queueFamilyCount = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
-
-        std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
-
-        int i = 0;
-        for (const auto& queueFamily : queueFamilies) {
-
-            if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-                resultIndices.graphicsFamily = i;
-            }
-
-
-            VkBool32 presentSupport = false;
-            vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
-            if (presentSupport) {
-                resultIndices.presentFamily = i;
-            }
-
-            if (resultIndices.isComplete()) {
-                break;
-            }
-            i++;
-        }
-
-        return resultIndices;
-    }
 
     static VkSampleCountFlagBits getMaxUsableSampleCount(VkPhysicalDevice device) {
         VkPhysicalDeviceProperties props;

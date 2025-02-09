@@ -68,12 +68,6 @@ class HelloTriangleApplication {
     throw std::runtime_error("failed to find suitable memory type!");
   }
 
-
-
-
-
-
-
   void run() {
     vulkanWindow = std::make_unique<VulkanWindow>(WIDTH, HEIGHT, "Vulkan");
 
@@ -134,22 +128,11 @@ class HelloTriangleApplication {
   const int GRID_HEIGHT = 10;
   const int instanceCount = GRID_WIDTH * GRID_HEIGHT;
 
-
-
-  struct UniformBufferObject {
-    glm::mat4 model;
-    glm::mat4 view;
-    glm::mat4 proj;
-  };
-
-  std::vector<VkBuffer> uniformBuffers;
-  std::vector<VkDeviceMemory> uniformBuffersMemory;
-
   void initVulkan() {
     vulkanInstance = std::make_unique<VulkanInstance>(vulkanWindow->getGLFWwindow());
     vulkanDevice = std::make_shared<VulkanDevice>(vulkanInstance->getVkInstance(), vulkanInstance->getSurface());
     vulkanSwapChain = std::make_unique<VulkanSwapChain>(vulkanDevice,vulkanInstance->getSurface(),WIDTH,HEIGHT);
-    vulkanRenderPass = std::make_unique<VulkanRenderPass>(vulkanDevice,vulkanSwapChain->getImageFormat(),vulkanDevice->getMsaaSamples(),findDepthFormat());
+    vulkanRenderPass = std::make_unique<VulkanRenderPass>(vulkanDevice,vulkanSwapChain->getImageFormat(),vulkanDevice->getMsaaSamples(),vulkanSwapChain->findDepthFormat());
     vulkanSwapChain->createFramebuffers(vulkanRenderPass->getHandle());
     vulkanDescriptors = std::make_unique<VulkanDescriptors>(vulkanDevice,vulkanSwapChain,vulkanWindow, MAX_FRAMES_IN_FLIGHT);
     vulkanPipeline = std::make_unique<VulkanPipeline>(
@@ -202,8 +185,6 @@ class HelloTriangleApplication {
       vkDestroySemaphore(vulkanDevice->getDevice(), renderFinishedSemaphores[i], nullptr);
       vkDestroySemaphore(vulkanDevice->getDevice(), imageAvailableSemaphores[i], nullptr);
       vkDestroyFence(vulkanDevice->getDevice(), inFlightFences[i], nullptr);
-      vkDestroyBuffer(vulkanDevice->getDevice(), uniformBuffers[i], nullptr);
-      vkFreeMemory(vulkanDevice->getDevice(), uniformBuffersMemory[i], nullptr);
     }
 
     vkDestroyCommandPool(vulkanDevice->getDevice(), commandPool, nullptr);
@@ -225,7 +206,7 @@ class HelloTriangleApplication {
     vulkanSwapChain->recreate(width, height);
 
 
-    vulkanRenderPass->createRenderPass(vulkanSwapChain->getImageFormat(),vulkanDevice->getMsaaSamples(),findDepthFormat());
+    vulkanRenderPass->createRenderPass(vulkanSwapChain->getImageFormat(),vulkanDevice->getMsaaSamples(),vulkanSwapChain->findDepthFormat());
     vulkanSwapChain->createFramebuffers(vulkanRenderPass->getHandle());
     vulkanPipeline->createGraphicsPipeline(vulkanRenderPass->getHandle(),vulkanDevice->getMsaaSamples(),"../shaders/vert.spv","../shaders/frag.spv");
   }
@@ -277,16 +258,6 @@ class HelloTriangleApplication {
     vkMapMemory(vulkanDevice->getDevice(), bufferMemory, 0, bufferSize, 0, &data);
     memcpy(data, instanceData.data(), (size_t)bufferSize);
     vkUnmapMemory(vulkanDevice->getDevice(), bufferMemory);
-  }
-
-
-
-  VkFormat findDepthFormat() {
-    return findSupportedFormat(
-        {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT},
-        VK_IMAGE_TILING_OPTIMAL,
-        VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
-    );
   }
 
 
@@ -365,7 +336,7 @@ class HelloTriangleApplication {
   }
 
   void createCommandPool() {
-    QueueFamilyIndices queueFamilyIndices = findQueueFamilies(vulkanDevice->getPhysicalDevice());
+    QueueFamilyIndices queueFamilyIndices = vulkanDevice->findQueueFamilies(vulkanDevice->getPhysicalDevice());
 
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -950,97 +921,6 @@ static void offsetNVertSurfaceWithCenter(
     }
 
     return shaderModule;
-  }
-
-
-  bool isDeviceSuitable(VkPhysicalDevice device) {
-    QueueFamilyIndices indices = findQueueFamilies(device);
-
-    bool extensionsSupported = vulkanDevice->checkDeviceExtensionSupport(device);
-
-    bool swapChainAdequate = false;
-    if (extensionsSupported) {
-      SwapChainSupportDetails swapChainSupport = vulkanDevice->querySwapChainSupport(device);
-      swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
-    }
-
-    return indices.isComplete() && extensionsSupported && swapChainAdequate;
-  }
-
-  QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) {
-    QueueFamilyIndices indices;
-
-    uint32_t queueFamilyCount = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
-
-    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
-
-    int i = 0;
-    for (const auto& queueFamily : queueFamilies) {
-      if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-        indices.graphicsFamily = i;
-      }
-
-      VkBool32 presentSupport = false;
-      vkGetPhysicalDeviceSurfaceSupportKHR(device, i, vulkanInstance->getSurface(), &presentSupport);
-
-      if (presentSupport) {
-        indices.presentFamily = i;
-      }
-
-      if (indices.isComplete()) {
-        break;
-      }
-
-      i++;
-    }
-
-    return indices;
-  }
-
-  std::vector<const char*> getRequiredExtensions() {
-    uint32_t glfwExtensionCount = 0;
-    const char** glfwExtensions;
-    glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-
-    std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
-
-    if (enableValidationLayers) {
-      extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-    }
-
-    if (macOS) {
-      extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
-      extensions.push_back("VK_KHR_get_physical_device_properties2");
-    }
-
-    return extensions;
-  }
-
-  bool checkValidationLayerSupport() {
-    uint32_t layerCount;
-    vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
-
-    std::vector<VkLayerProperties> availableLayers(layerCount);
-    vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
-
-    for (const char* layerName : validationLayers) {
-      bool layerFound = false;
-
-      for (const auto& layerProperties : availableLayers) {
-        if (strcmp(layerName, layerProperties.layerName) == 0) {
-          layerFound = true;
-          break;
-        }
-      }
-
-      if (!layerFound) {
-        return false;
-      }
-    }
-
-    return true;
   }
 
   static std::vector<char> readFile(const std::string& filename) {
