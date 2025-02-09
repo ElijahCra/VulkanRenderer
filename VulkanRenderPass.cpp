@@ -25,15 +25,7 @@ public:
         }
     }
 
-    // Provide accessor
-    VkRenderPass getHandle() const { return renderPass; }
-
-private:
-    std::shared_ptr<VulkanDevice> devicePtr;
-    VkRenderPass renderPass = VK_NULL_HANDLE;
-
-private:
-    void createRenderPass(VkFormat swapChainImageFormat,
+  void createRenderPass(VkFormat swapChainImageFormat,
                           VkSampleCountFlagBits msaaSamples,
                           VkFormat depthFormat)
     {
@@ -126,4 +118,13 @@ private:
             throw std::runtime_error("failed to create render pass!");
         }
     }
+
+    // Provide accessor
+    VkRenderPass getHandle() const { return renderPass; }
+
+private:
+    std::shared_ptr<VulkanDevice> devicePtr;
+    VkRenderPass renderPass = VK_NULL_HANDLE;
+
+
 };
