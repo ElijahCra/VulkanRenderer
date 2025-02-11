@@ -65,7 +65,7 @@ public:
   float cameraAngleY = glm::radians(90.0f);
   float radius = 20.0f;
   float fov = 5.0f;
-
+  bool framebufferResized = false;
 
 
 private:
@@ -97,7 +97,7 @@ private:
       auto app = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
       app->framebufferResized = true;
     }
-  bool framebufferResized = false;
+
 
     void initWindow() {
         if (!glfwInit()) {

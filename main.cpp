@@ -8,6 +8,8 @@
 #include "VulkanRenderPass.cpp"
 #include "VulkanPipeline.cpp"
 #include "VulkanDescriptor.cpp"
+#include "VulkanCommands.cpp"
+#include "VulkanSync.cpp"
 #include "Util.cpp"
 
 #include <iostream>
@@ -54,19 +56,6 @@ const bool enableValidationLayers = true;
 
 class HelloTriangleApplication {
  public:
-  [[nodiscard]] uint32_t findMemoryType(const uint32_t typeFilter, VkMemoryPropertyFlags properties) const {
-    VkPhysicalDeviceMemoryProperties memProperties;
-    vkGetPhysicalDeviceMemoryProperties(vulkanDevice->getPhysicalDevice(), &memProperties);
-
-    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
-      if ((typeFilter & (1 << i)) &&
-          (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
-        return i;
-          }
-    }
-
-    throw std::runtime_error("failed to find suitable memory type!");
-  }
 
   void run() {
     vulkanWindow = std::make_unique<VulkanWindow>(WIDTH, HEIGHT, "Vulkan");
@@ -84,17 +73,10 @@ class HelloTriangleApplication {
   std::unique_ptr<VulkanRenderPass> vulkanRenderPass;
   std::unique_ptr<VulkanPipeline> vulkanPipeline;
   std::unique_ptr<VulkanDescriptors> vulkanDescriptors;
+  std::unique_ptr<VulkanCommands> vulkanCommands;
+  std::unique_ptr<VulkanSync> vulkanSync;
 
-
-  VkCommandPool commandPool = nullptr;
-  std::vector<VkCommandBuffer> commandBuffers;
-
-  std::vector<VkSemaphore> imageAvailableSemaphores;
-  std::vector<VkSemaphore> renderFinishedSemaphores;
-  std::vector<VkFence> inFlightFences;
   uint32_t currentFrame = 0;
-
-  bool framebufferResized = false;
 
   std::vector<Vertex> edgeVertices;
   std::vector<uint16_t> edgeIndices;
@@ -110,8 +92,6 @@ class HelloTriangleApplication {
   VkDeviceMemory internalVertexBufferMemory = nullptr;
   VkBuffer internalIndexBuffer = nullptr;
   VkDeviceMemory internalIndexBufferMemory = nullptr;
-
-
 
   std::vector<InstanceData> edgeInstanceData;
   std::vector<InstanceData> internalInstanceData;
@@ -143,15 +123,14 @@ class HelloTriangleApplication {
         "../shaders/vert.spv",
         "../shaders/frag.spv"
     );
-    createCommandPool();
+    vulkanCommands = std::make_unique<VulkanCommands>(vulkanDevice,MAX_FRAMES_IN_FLIGHT);
     generateHexagonData();
     createVertexBuffer(edgeVertices, edgeVertexBuffer, edgeVertexBufferMemory);
     createIndexBuffer(edgeIndices, edgeIndexBuffer, edgeIndexBufferMemory);
     createVertexBuffer(internalVertices, internalVertexBuffer, internalVertexBufferMemory);
     createIndexBuffer(internalIndices, internalIndexBuffer, internalIndexBufferMemory);
     prepareInstanceData();
-    createCommandBuffers();
-    createSyncObjects();
+    vulkanSync = std::make_unique<VulkanSync>(vulkanDevice,MAX_FRAMES_IN_FLIGHT);
   }
 
   void mainLoop() {
@@ -181,17 +160,7 @@ class HelloTriangleApplication {
     vkDestroyBuffer(vulkanDevice->getDevice(), internalInstanceBuffer, nullptr);
     vkFreeMemory(vulkanDevice->getDevice(), internalInstanceBufferMemory, nullptr);
 
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-      vkDestroySemaphore(vulkanDevice->getDevice(), renderFinishedSemaphores[i], nullptr);
-      vkDestroySemaphore(vulkanDevice->getDevice(), imageAvailableSemaphores[i], nullptr);
-      vkDestroyFence(vulkanDevice->getDevice(), inFlightFences[i], nullptr);
-    }
-
-    vkDestroyCommandPool(vulkanDevice->getDevice(), commandPool, nullptr);
-
     vkDestroyDevice(vulkanDevice->getDevice(), nullptr);
-
-    glfwTerminate();
   }
 
   void recreateSwapChain() {
@@ -259,95 +228,6 @@ class HelloTriangleApplication {
     memcpy(data, instanceData.data(), (size_t)bufferSize);
     vkUnmapMemory(vulkanDevice->getDevice(), bufferMemory);
   }
-
-
-  void createImage(uint32_t width, uint32_t height, VkSampleCountFlagBits numSamples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory) {
-    VkImageCreateInfo imageInfo{};
-    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    imageInfo.imageType = VK_IMAGE_TYPE_2D;  // For depth image
-    imageInfo.extent.width = width;
-    imageInfo.extent.height = height;
-    imageInfo.extent.depth = 1;  // 2D image, depth is 1
-    imageInfo.mipLevels = 1;     // No mipmapping
-    imageInfo.arrayLayers = 1;   // Single-layered image
-    imageInfo.format = format;
-    imageInfo.tiling = tiling;
-    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    imageInfo.usage = usage;  // Should include VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
-    imageInfo.samples = numSamples;
-    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    if (vkCreateImage(vulkanDevice->getDevice(), &imageInfo, nullptr, &image) != VK_SUCCESS) {
-      throw std::runtime_error("failed to create image!");
-    }
-
-    VkMemoryRequirements memRequirements;
-    vkGetImageMemoryRequirements(vulkanDevice->getDevice(), image, &memRequirements);
-
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
-
-    if (vkAllocateMemory(vulkanDevice->getDevice(), &allocInfo, nullptr, &imageMemory) != VK_SUCCESS) {
-      throw std::runtime_error("failed to allocate image memory!");
-    }
-
-    vkBindImageMemory(vulkanDevice->getDevice(), image, imageMemory, 0);
-  }
-
-  VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) const {
-    VkImageViewCreateInfo viewInfo{};
-    viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    viewInfo.image = image;  // The image to create a view for
-    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    viewInfo.format = format;
-
-    viewInfo.subresourceRange.aspectMask = aspectFlags;  // e.g., VK_IMAGE_ASPECT_DEPTH_BIT
-    viewInfo.subresourceRange.baseMipLevel = 0;  // No mipmapping
-    viewInfo.subresourceRange.levelCount = 1;
-    viewInfo.subresourceRange.baseArrayLayer = 0;  // Single-layered image
-    viewInfo.subresourceRange.layerCount = 1;
-
-    VkImageView imageView;
-    if (vkCreateImageView(vulkanDevice->getDevice(), &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
-      throw std::runtime_error("failed to create texture image view!");
-    }
-
-    return imageView;
-  }
-
-  VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling,
-                             VkFormatFeatureFlags features) {
-    for (VkFormat format : candidates) {
-      VkFormatProperties props;
-      vkGetPhysicalDeviceFormatProperties(vulkanDevice->getPhysicalDevice(), format, &props);
-
-      if (tiling == VK_IMAGE_TILING_LINEAR &&
-          (props.linearTilingFeatures & features) == features) {
-        return format;
-          } else if (tiling == VK_IMAGE_TILING_OPTIMAL &&
-                     (props.optimalTilingFeatures & features) == features) {
-            return format;
-                     }
-    }
-
-    throw std::runtime_error("failed to find supported format!");
-  }
-
-  void createCommandPool() {
-    QueueFamilyIndices queueFamilyIndices = vulkanDevice->findQueueFamilies(vulkanDevice->getPhysicalDevice());
-
-    VkCommandPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
-
-    if (vkCreateCommandPool(vulkanDevice->getDevice(), &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
-      throw std::runtime_error("failed to create command pool!");
-    }
-  }
-
 
 void generateHexagonData() {
     // Generate mesh for edge hexagons (with sides)
@@ -684,7 +564,7 @@ static void offsetNVertSurfaceWithCenter(
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memRequirements.size;
     allocInfo.memoryTypeIndex =
-        findMemoryType(memRequirements.memoryTypeBits,
+        vulkanDevice->findMemoryType(memRequirements.memoryTypeBits,
                        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
     if (vkAllocateMemory(vulkanDevice->getDevice(), &allocInfo, nullptr, &vertexBufferMemory) != VK_SUCCESS) {
@@ -719,7 +599,7 @@ static void offsetNVertSurfaceWithCenter(
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memRequirements.size;
     allocInfo.memoryTypeIndex =
-        findMemoryType(memRequirements.memoryTypeBits,
+        vulkanDevice->findMemoryType(memRequirements.memoryTypeBits,
                        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
     if (vkAllocateMemory(vulkanDevice->getDevice(), &allocInfo, nullptr, &indexBufferMemory) != VK_SUCCESS) {
@@ -732,20 +612,6 @@ static void offsetNVertSurfaceWithCenter(
     vkMapMemory(vulkanDevice->getDevice(), indexBufferMemory, 0, bufferSize, 0, &data);
     memcpy(data, indices.data(), (size_t) bufferSize);
     vkUnmapMemory(vulkanDevice->getDevice(), indexBufferMemory);
-  }
-
-  void createCommandBuffers() {
-    commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-
-    VkCommandBufferAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool = commandPool;
-    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = (uint32_t) commandBuffers.size();
-
-    if (vkAllocateCommandBuffers(vulkanDevice->getDevice(), &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
-      throw std::runtime_error("failed to allocate command buffers!");
-    }
   }
 
   void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, uint32_t currentFrame) {
@@ -823,33 +689,12 @@ static void offsetNVertSurfaceWithCenter(
     }
   }
 
-  void createSyncObjects() {
-    imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
-    renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
-    inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
-
-    VkSemaphoreCreateInfo semaphoreInfo{};
-    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-
-    VkFenceCreateInfo fenceInfo{};
-    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-      if (vkCreateSemaphore(vulkanDevice->getDevice(), &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
-          vkCreateSemaphore(vulkanDevice->getDevice(), &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
-          vkCreateFence(vulkanDevice->getDevice(), &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create synchronization objects for a frame!");
-      }
-    }
-  }
-
   void drawFrame() {
-    vkWaitForFences(vulkanDevice->getDevice(), 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
+    vkWaitForFences(vulkanDevice->getDevice(), 1, vulkanSync->getInFlightFence(currentFrame), VK_TRUE, UINT64_MAX);
 
     uint32_t imageIndex;
     VkResult result =
-        vkAcquireNextImageKHR(vulkanDevice->getDevice(), vulkanSwapChain->getSwapChain(), UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE,
+        vkAcquireNextImageKHR(vulkanDevice->getDevice(), vulkanSwapChain->getSwapChain(), UINT64_MAX, vulkanSync->getImageAvailableSemaphore(currentFrame), VK_NULL_HANDLE,
                               &imageIndex);
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR) {
@@ -859,28 +704,28 @@ static void offsetNVertSurfaceWithCenter(
       throw std::runtime_error("failed to acquire swap chain image!");
     }
     vulkanDescriptors->updateUniformBuffer(currentFrame);
-    vkResetFences(vulkanDevice->getDevice(), 1, &inFlightFences[currentFrame]);
+    vkResetFences(vulkanDevice->getDevice(), 1, vulkanSync->getInFlightFence(currentFrame));
 
-    vkResetCommandBuffer(commandBuffers[currentFrame], /*VkCommandBufferResetFlagBits*/ 0);
-    recordCommandBuffer(commandBuffers[currentFrame], imageIndex,currentFrame);
+    vkResetCommandBuffer(vulkanCommands->getCommandBuffers()[currentFrame], /*VkCommandBufferResetFlagBits*/ 0);
+    recordCommandBuffer(vulkanCommands->getCommandBuffers()[currentFrame], imageIndex,currentFrame);
 
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-    VkSemaphore waitSemaphores[] = {imageAvailableSemaphores[currentFrame]};
+    VkSemaphore waitSemaphores[] = {vulkanSync->getImageAvailableSemaphore(currentFrame)};
     VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
     submitInfo.waitSemaphoreCount = 1;
     submitInfo.pWaitSemaphores = waitSemaphores;
     submitInfo.pWaitDstStageMask = waitStages;
 
     submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &commandBuffers[currentFrame];
+    submitInfo.pCommandBuffers = &vulkanCommands->getCommandBuffers()[currentFrame];
 
-    VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[currentFrame]};
+    VkSemaphore signalSemaphores[] = {vulkanSync->getRenderFinishedSemaphore(currentFrame)};
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
 
-    if (vkQueueSubmit(vulkanDevice->getGraphicsQueue(), 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS) {
+    if (vkQueueSubmit(vulkanDevice->getGraphicsQueue(), 1, &submitInfo, *vulkanSync->getInFlightFence(currentFrame)) != VK_SUCCESS) {
       throw std::runtime_error("failed to submit draw command buffer!");
     }
 
@@ -898,8 +743,8 @@ static void offsetNVertSurfaceWithCenter(
 
     result = vkQueuePresentKHR(vulkanDevice->getPresentQueue(), &presentInfo);
 
-    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
-      framebufferResized = false;
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || vulkanWindow->framebufferResized) {
+      vulkanWindow->framebufferResized = false;
       recreateSwapChain();
     } else if (result != VK_SUCCESS) {
       throw std::runtime_error("failed to present swap chain image!");
@@ -921,24 +766,6 @@ static void offsetNVertSurfaceWithCenter(
     }
 
     return shaderModule;
-  }
-
-  static std::vector<char> readFile(const std::string& filename) {
-    std::ifstream file(filename, std::ios::ate | std::ios::binary);
-
-    if (!file.is_open()) {
-      throw std::runtime_error("failed to open file!");
-    }
-
-    size_t fileSize = (size_t) file.tellg();
-    std::vector<char> buffer(fileSize);
-
-    file.seekg(0);
-    file.read(buffer.data(), fileSize);
-
-    file.close();
-
-    return buffer;
   }
 
   static VKAPI_ATTR VkBool32 VKAPI_CALL
