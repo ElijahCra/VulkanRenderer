@@ -29,7 +29,6 @@ public:
                           VkSampleCountFlagBits msaaSamples,
                           VkFormat depthFormat)
     {
-        // 1) Color attachment
         VkAttachmentDescription colorAttachment{};
         colorAttachment.format = swapChainImageFormat;
         colorAttachment.samples = msaaSamples;
@@ -40,7 +39,6 @@ public:
         colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         colorAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-        // 2) Depth attachment
         VkAttachmentDescription depthAttachment{};
         depthAttachment.format = depthFormat;
         depthAttachment.samples = msaaSamples;
@@ -51,11 +49,9 @@ public:
         depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-        // 3) MSAA resolve attachment (if msaaSamples > 1, we typically resolve to 1-bit)
-        //    But if you're not using MSAA, you can optionally skip this.
         VkAttachmentDescription colorAttachmentResolve{};
         colorAttachmentResolve.format = swapChainImageFormat;
-        colorAttachmentResolve.samples = VK_SAMPLE_COUNT_1_BIT;  // the resolved image
+        colorAttachmentResolve.samples = VK_SAMPLE_COUNT_1_BIT;
         colorAttachmentResolve.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         colorAttachmentResolve.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         colorAttachmentResolve.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -63,7 +59,6 @@ public:
         colorAttachmentResolve.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         colorAttachmentResolve.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-        // Attachment references
         VkAttachmentReference colorAttachmentRef{};
         colorAttachmentRef.attachment = 0;
         colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -76,7 +71,6 @@ public:
         colorAttachmentResolveRef.attachment = 2;
         colorAttachmentResolveRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-        // Single subpass
         VkSubpassDescription subpass{};
         subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
         subpass.colorAttachmentCount = 1;
@@ -84,7 +78,6 @@ public:
         subpass.pResolveAttachments = &colorAttachmentResolveRef;
         subpass.pDepthStencilAttachment = &depthAttachmentRef;
 
-        // Subpass dependency
         VkSubpassDependency dependency{};
         dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
         dependency.dstSubpass = 0;
@@ -97,7 +90,6 @@ public:
         dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
-        // Combine the attachments
         std::array<VkAttachmentDescription, 3> attachments = {
             colorAttachment, depthAttachment, colorAttachmentResolve
         };
@@ -111,7 +103,6 @@ public:
         renderPassInfo.dependencyCount = 1;
         renderPassInfo.pDependencies = &dependency;
 
-        // Create the render pass
         if (vkCreateRenderPass(devicePtr->getDevice(), &renderPassInfo, nullptr, &renderPass)
             != VK_SUCCESS)
         {
@@ -119,7 +110,6 @@ public:
         }
     }
 
-    // Provide accessor
     VkRenderPass getHandle() const { return renderPass; }
 
 private:

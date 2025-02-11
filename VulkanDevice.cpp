@@ -22,17 +22,7 @@ const std::vector<const char*> validationLayers = {
 const std::vector<const char*> deviceExtensions = {
   VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
-#ifdef NDEBUG
-const bool enableValidationLayers = false;
-#else
-const bool enableValidationLayers = true;
-#endif
 
-#if defined(__APPLE__)
-const bool macOS = true;
-#else
-const bool macOS = false;
-#endif
 struct QueueFamilyIndices {
     std::optional<uint32_t> graphicsFamily;
     std::optional<uint32_t> presentFamily;

@@ -28,25 +28,25 @@ public:
         cleanup();
     }
   void createFramebuffers(VkRenderPass renderPass) {
-      // Example for when you have color+depth+swapchain attachments
+
       swapChainFramebuffers.resize(swapChainImageViews.size());
 
       for (size_t i = 0; i < swapChainImageViews.size(); i++) {
         std::array<VkImageView, 3> attachments = {
-          // 0: color
+
           (devicePtr->getMsaaSamples() == VK_SAMPLE_COUNT_1_BIT)
               ? swapChainImageViews[i]
               : colorImageView,
-          // 1: depth
+
           depthImageView,
-          // 2: if MSAA, the resolved color is the swapchain image:
+
           (devicePtr->getMsaaSamples() == VK_SAMPLE_COUNT_1_BIT)
               ? VK_NULL_HANDLE /* not used if no msaa? */
               : swapChainImageViews[i]
       };
 
-        // If not using MSAA, you'll have a simpler attachments array
-        // Adjust accordingly
+
+
 
         VkFramebufferCreateInfo framebufferInfo{};
         framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -63,7 +63,7 @@ public:
       }
     }
 
-    // We'll expose some getters:
+
     VkFormat getImageFormat() const { return swapChainImageFormat; }
     VkExtent2D getExtent()    const { return swapChainExtent; }
     VkSwapchainKHR getSwapChain() const { return swapChain; }
@@ -71,7 +71,7 @@ public:
     const std::vector<VkImageView>& getImageViews() const { return swapChainImageViews; }
     const std::vector<VkFramebuffer>& getFramebuffers() const { return swapChainFramebuffers; }
 
-    // If you need the depth or color attachments:
+
     VkImageView getDepthImageView() const { return depthImageView; }
     VkImage getDepthImage() const { return depthImage; }
     VkDeviceMemory getDepthImageMemory() const { return depthImageMemory; }
@@ -88,7 +88,7 @@ public:
       );
     }
 
-    // The recreate function for window resizing
+
     void recreate(uint32_t newWidth, uint32_t newHeight) {
         width = newWidth;
         height = newHeight;
@@ -101,7 +101,7 @@ public:
     }
 
 private:
-    // Reference to the device (we assume you store device in a shared_ptr now):
+
     std::shared_ptr<VulkanDevice> devicePtr;
     VkSurfaceKHR surface;
     uint32_t width, height;
@@ -112,10 +112,10 @@ private:
     VkExtent2D swapChainExtent{};
     std::vector<VkImageView> swapChainImageViews;
 
-    // Possibly handle framebuffers here:
+
     std::vector<VkFramebuffer> swapChainFramebuffers;
 
-    // Depth/Color resources
+
     VkImage depthImage          = VK_NULL_HANDLE;
     VkDeviceMemory depthImageMemory = VK_NULL_HANDLE;
     VkImageView depthImageView  = VK_NULL_HANDLE;
@@ -124,47 +124,47 @@ private:
     VkDeviceMemory colorImageMemory = VK_NULL_HANDLE;
     VkImageView colorImageView  = VK_NULL_HANDLE;
 
-    // Clean up the old swap chain & images
+
     void cleanup() {
-        // Destroy framebuffers
+
         for (auto framebuffer : swapChainFramebuffers) {
             vkDestroyFramebuffer(device(), framebuffer, nullptr);
         }
 
-        // Destroy image views
+
         for (auto imageView : swapChainImageViews) {
             vkDestroyImageView(device(), imageView, nullptr);
         }
 
-        // Destroy depth resources
+
         vkDestroyImageView(device(), depthImageView, nullptr);
         vkDestroyImage(device(), depthImage, nullptr);
         vkFreeMemory(device(), depthImageMemory, nullptr);
 
-        // Destroy color resources
+
         vkDestroyImageView(device(), colorImageView, nullptr);
         vkDestroyImage(device(), colorImage, nullptr);
         vkFreeMemory(device(), colorImageMemory, nullptr);
 
-        // Destroy swap chain
+
         if (swapChain != VK_NULL_HANDLE) {
             vkDestroySwapchainKHR(device(), swapChain, nullptr);
         }
     }
 
-    // Helper to avoid writing devicePtr->getDevice() repeatedly
+
     VkDevice device() const { return devicePtr->getDevice(); }
 
-    // We replicate your original createSwapChain() logic here:
+
     void createSwapChain() {
-        // Query swap chain support from your VulkanDevice, or re-use the same approach:
+
         SwapChainSupportDetails swapChainSupport = devicePtr->querySwapChainSupport(devicePtr->getPhysicalDevice());
 
         VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
         VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
         VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
 
-        // see if newWidth/newHeight are stored in "extent"
+
         uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
         if (swapChainSupport.capabilities.maxImageCount > 0 &&
             imageCount > swapChainSupport.capabilities.maxImageCount) {
@@ -238,10 +238,10 @@ private:
         }
     }
 
-    // If you want to create a color resource for MSAA
+
     void createColorResources() {
         if (devicePtr->getMsaaSamples() == VK_SAMPLE_COUNT_1_BIT) {
-            // No MSAA needed, skip
+
             return;
         }
         VkFormat colorFormat = swapChainImageFormat;
@@ -299,7 +299,7 @@ private:
         throw std::runtime_error("failed to find supported format!");
     }
 
-    // Create an image and allocate memory
+
     void createImage(uint32_t w, uint32_t h,
                      VkSampleCountFlagBits samples,
                      VkFormat format,
@@ -342,7 +342,7 @@ private:
         vkBindImageMemory(device(), image, imageMemory, 0);
     }
 
-    // Create an image view
+
     VkImageView createImageView(VkImage image,
                                 VkFormat format,
                                 VkImageAspectFlags aspectFlags,
@@ -365,7 +365,7 @@ private:
         return imageView;
     }
 
-    // The "choose" helpers:
+
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
         for (const auto& availableFormat : availableFormats) {
             if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB &&
@@ -382,14 +382,14 @@ private:
                 return mode;
             }
         }
-        return VK_PRESENT_MODE_FIFO_KHR; // fallback
+        return VK_PRESENT_MODE_FIFO_KHR;
     }
 
     VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
         if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
             return capabilities.currentExtent;
         } else {
-            // Use the app's width/height from the constructor
+
             VkExtent2D actualExtent = { width, height };
             actualExtent.width = std::clamp(actualExtent.width,
                                             capabilities.minImageExtent.width,

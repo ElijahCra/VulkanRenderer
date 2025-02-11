@@ -19,7 +19,6 @@ public:
         VkRenderPass renderPass,
         VkDescriptorSetLayout descriptorSetLayout,
         VkSampleCountFlagBits msaaSamples,
-        // Possibly pass your vertex input config or a struct with pipeline configs
         const std::string& vertShaderPath,
         const std::string& fragShaderPath
     )
@@ -44,7 +43,6 @@ public:
         const std::string& vertShaderPath,
         const std::string& fragShaderPath
     ) {
-        // 1. Read the shader files & create modules
         auto vertShaderCode = readFile(vertShaderPath);
         auto fragShaderCode = readFile(fragShaderPath);
 
@@ -66,8 +64,6 @@ public:
         VkPipelineShaderStageCreateInfo shaderStages[] = {
             vertShaderStageInfo, fragShaderStageInfo
         };
-
-        // 2. Vertex Input
         auto bindingDescription = Vertex::getBindingDescription();
         auto instanceBindingDescription = Vertex::getInstanceBindingDescription();
         std::array<VkVertexInputBindingDescription, 2> bindingDescriptions = {
@@ -82,19 +78,16 @@ public:
         vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
         vertexInputInfo.pVertexAttributeDescriptions    = attributeDescriptions.data();
 
-        // 3. Input Assembly
         VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
         inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
         inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
         inputAssembly.primitiveRestartEnable = VK_FALSE;
 
-        // 4. Viewport/Scissor (dynamic in your code)
         VkPipelineViewportStateCreateInfo viewportState{};
         viewportState.sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
         viewportState.viewportCount = 1;
         viewportState.scissorCount  = 1;
 
-        // 5. Rasterizer
         VkPipelineRasterizationStateCreateInfo rasterizer{};
         rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
         rasterizer.depthClampEnable        = VK_FALSE;
@@ -105,13 +98,11 @@ public:
         rasterizer.frontFace               = VK_FRONT_FACE_CLOCKWISE;
         rasterizer.depthBiasEnable         = VK_FALSE;
 
-        // 6. Multisampling
         VkPipelineMultisampleStateCreateInfo multisampling{};
         multisampling.sType                = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
         multisampling.sampleShadingEnable  = VK_FALSE;
         multisampling.rasterizationSamples = msaaSamples;
 
-        // 7. Color blending
         VkPipelineColorBlendAttachmentState colorBlendAttachment{};
         colorBlendAttachment.colorWriteMask =
             VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
@@ -129,7 +120,6 @@ public:
         colorBlending.blendConstants[2] = 0.0f;
         colorBlending.blendConstants[3] = 0.0f;
 
-        // 8. Dynamic states
         std::vector<VkDynamicState> dynamicStates = {
             VK_DYNAMIC_STATE_VIEWPORT,
             VK_DYNAMIC_STATE_SCISSOR
@@ -139,7 +129,6 @@ public:
         dynamicState.dynamicStateCount  = static_cast<uint32_t>(dynamicStates.size());
         dynamicState.pDynamicStates     = dynamicStates.data();
 
-        // 9. Depth/stencil
         VkPipelineDepthStencilStateCreateInfo depthStencil{};
         depthStencil.sType            = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
         depthStencil.depthTestEnable  = VK_TRUE;
@@ -148,7 +137,6 @@ public:
         depthStencil.stencilTestEnable= VK_FALSE;
         depthStencil.depthBoundsTestEnable = VK_FALSE;
 
-        // 10. Finally, combine everything:
         VkGraphicsPipelineCreateInfo pipelineInfo{};
         pipelineInfo.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
         pipelineInfo.stageCount          = 2;
@@ -169,7 +157,6 @@ public:
             throw std::runtime_error("failed to create graphics pipeline!");
         }
 
-        // Cleanup the shader modules
         vkDestroyShaderModule(device, fragShaderModule, nullptr);
         vkDestroyShaderModule(device, vertShaderModule, nullptr);
     }
@@ -182,9 +169,8 @@ private:
     VkPipeline pipeline = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
 
-private:
+
     void createPipelineLayout(VkDescriptorSetLayout descriptorSetLayout) {
-        // For a simple pipeline, you might just do:
         VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
         pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         pipelineLayoutInfo.setLayoutCount = 1;
@@ -196,9 +182,6 @@ private:
         }
     }
 
-
-
-    // Helper to load a file
     static std::vector<char> readFile(const std::string& filename) {
         std::ifstream file(filename, std::ios::ate | std::ios::binary);
         if (!file.is_open()) {
@@ -212,7 +195,6 @@ private:
         return buffer;
     }
 
-    // Helper to create a shader module from SPIR-V code
     VkShaderModule createShaderModule(const std::vector<char>& code) {
         VkShaderModuleCreateInfo createInfo{};
         createInfo.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;

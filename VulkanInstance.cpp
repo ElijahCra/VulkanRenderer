@@ -9,10 +9,19 @@
 #include <stdexcept>
 #include <iostream>
 #include <cstring>
+#ifdef NDEBUG
+const bool enableValidationLayers = false;
+#else
+const bool enableValidationLayers = true;
+#endif
 
 extern const bool enableValidationLayers;
 extern const std::vector<const char*> validationLayers;
-extern const bool macOS;
+#if defined(__APPLE__)
+const bool macOS = true;
+#else
+const bool macOS = false;
+#endif
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
                                       const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger) {
   auto func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
@@ -169,9 +178,6 @@ private:
 
         if (enableValidationLayers) {
             extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-        }
-        if (macOS) {
-            extensions.push_back("VK_KHR_get_physical_device_properties2");
         }
         return extensions;
     }

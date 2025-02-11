@@ -14,7 +14,6 @@
 
 
 struct UniformBufferObject {
-    // your UBO data, e.g., model/view/proj
     glm::mat4 model;
     glm::mat4 view;
     glm::mat4 proj;
@@ -32,10 +31,7 @@ public:
     }
 
     ~VulkanDescriptors() {
-        // Destroy in reverse order
         vkDestroyDescriptorPool(device(), descriptorPool, nullptr);
-
-        // Destroy uniform buffers
         for (size_t i = 0; i < maxFramesInFlight; i++) {
             vkDestroyBuffer(device(), uniformBuffers[i], nullptr);
             vkFreeMemory(device(), uniformBuffersMemory[i], nullptr);
@@ -89,8 +85,6 @@ private:
     std::vector<VkBuffer> uniformBuffers;
     std::vector<VkDeviceMemory> uniformBuffersMemory;
 
-private:
-    // Helper so we don't keep calling devicePtr->getDevice()
     VkDevice device() const { return devicePtr->getDevice(); }
 
     void createDescriptorSetLayout() {

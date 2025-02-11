@@ -22,7 +22,6 @@ public:
         }
     }
 
-    // Accessors
     VkSemaphore getImageAvailableSemaphore(size_t frameIndex) const {
         return imageAvailableSemaphores[frameIndex];
     }
@@ -45,8 +44,6 @@ private:
     std::vector<VkSemaphore> renderFinishedSemaphores;
     std::vector<VkFence>     inFlightFences;
 
-private:
-    // Helper to reduce calling devicePtr->getDevice() everywhere
     VkDevice device() const { return devicePtr->getDevice(); }
 
     void createSyncObjects() {

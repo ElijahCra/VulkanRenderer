@@ -16,7 +16,6 @@ public:
     }
 
     ~VulkanCommands() {
-        // Command buffers are implicitly freed when the command pool is destroyed
         if (commandPool != VK_NULL_HANDLE) {
             vkDestroyCommandPool(device(), commandPool, nullptr);
         }
@@ -31,12 +30,9 @@ private:
     std::vector<VkCommandBuffer> commandBuffers;
     uint32_t maxFramesInFlight;
 
-private:
-    // Helper to avoid calling devicePtr->getDevice() repeatedly
     VkDevice device() const { return devicePtr->getDevice(); }
 
     void createCommandPool() {
-        // We'll need the queue family indices from VulkanDevice
         QueueFamilyIndices queueFamilyIndices = devicePtr->getQueueFamilyIndices();
 
         VkCommandPoolCreateInfo poolInfo{};
@@ -50,7 +46,6 @@ private:
     }
 
     void allocateCommandBuffers() {
-        // We typically allocate one command buffer per frame in flight
         commandBuffers.resize(maxFramesInFlight);
 
         VkCommandBufferAllocateInfo allocInfo{};
