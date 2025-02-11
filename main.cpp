@@ -14,31 +14,30 @@ constexpr uint32_t WIDTH = 800;
 constexpr uint32_t HEIGHT = 600;
 
 class HelloTriangleApplication {
- public:
+  public:
+    void run() {
+      vulkanWindow = std::make_unique<VulkanWindow>(WIDTH, HEIGHT, "Vulkan");
+      renderer.init(vulkanWindow, WIDTH, HEIGHT);
 
-  void run() {
-    vulkanWindow = std::make_unique<VulkanWindow>(WIDTH, HEIGHT, "Vulkan");
-    renderer.init(vulkanWindow,WIDTH,HEIGHT);
-
-    mainLoop();
-  }
-
- private:
-  std::shared_ptr<VulkanWindow> vulkanWindow;
-  VulkanRenderer renderer{};
-
-  //uint32_t mipLevels;
-  //VkImage textureImage;
-
-  void mainLoop() {
-    while (!vulkanWindow->shouldClose()) {
-      vulkanWindow->pollEvents();
-      renderer.drawFrame();
+      mainLoop();
     }
 
-    vkDeviceWaitIdle(renderer.getDevice());
-    renderer.cleanup();
-  }
+  private:
+    std::shared_ptr<VulkanWindow> vulkanWindow;
+    VulkanRenderer renderer{};
+
+    //uint32_t mipLevels;
+    //VkImage textureImage;
+
+    void mainLoop() {
+      while (!vulkanWindow->shouldClose()) {
+        vulkanWindow->pollEvents();
+        renderer.drawFrame();
+      }
+
+      vkDeviceWaitIdle(renderer.getDevice());
+      renderer.cleanup();
+    }
 };
 
 int main() {
@@ -46,7 +45,7 @@ int main() {
 
   try {
     app.run();
-  } catch (const std::exception& e) {
+  } catch (const std::exception &e) {
     std::cerr << e.what() << std::endl;
     return EXIT_FAILURE;
   }

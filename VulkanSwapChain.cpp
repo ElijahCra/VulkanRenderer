@@ -10,43 +10,37 @@
 #include <memory>
 
 class VulkanSwapChain {
-public:
-
+  public:
     VulkanSwapChain(std::shared_ptr<VulkanDevice> device,
                     VkSurfaceKHR surface,
                     uint32_t width,
                     uint32_t height)
-        : devicePtr(device), surface(surface), width(width), height(height)
-    {
-        createSwapChain();
-        createImageViews();
-        createColorResources();
-        createDepthResources();
+      : devicePtr(device), surface(surface), width(width), height(height) {
+      createSwapChain();
+      createImageViews();
+      createColorResources();
+      createDepthResources();
     }
 
     ~VulkanSwapChain() {
-        cleanup();
+      cleanup();
     }
-  void createFramebuffers(VkRenderPass renderPass) {
-
+    void createFramebuffers(VkRenderPass renderPass) {
       swapChainFramebuffers.resize(swapChainImageViews.size());
 
       for (size_t i = 0; i < swapChainImageViews.size(); i++) {
         std::array<VkImageView, 3> attachments = {
 
           (devicePtr->getMsaaSamples() == VK_SAMPLE_COUNT_1_BIT)
-              ? swapChainImageViews[i]
-              : colorImageView,
+            ? swapChainImageViews[i]
+            : colorImageView,
 
           depthImageView,
 
           (devicePtr->getMsaaSamples() == VK_SAMPLE_COUNT_1_BIT)
-              ? VK_NULL_HANDLE /* not used if no msaa? */
-              : swapChainImageViews[i]
-      };
-
-
-
+            ? VK_NULL_HANDLE /* not used if no msaa? */
+            : swapChainImageViews[i]
+        };
 
         VkFramebufferCreateInfo framebufferInfo{};
         framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -63,14 +57,12 @@ public:
       }
     }
 
-
     VkFormat getImageFormat() const { return swapChainImageFormat; }
-    VkExtent2D getExtent()    const { return swapChainExtent; }
+    VkExtent2D getExtent() const { return swapChainExtent; }
     VkSwapchainKHR getSwapChain() const { return swapChain; }
 
-    const std::vector<VkImageView>& getImageViews() const { return swapChainImageViews; }
-    const std::vector<VkFramebuffer>& getFramebuffers() const { return swapChainFramebuffers; }
-
+    const std::vector<VkImageView> &getImageViews() const { return swapChainImageViews; }
+    const std::vector<VkFramebuffer> &getFramebuffers() const { return swapChainFramebuffers; }
 
     VkImageView getDepthImageView() const { return depthImageView; }
     VkImage getDepthImage() const { return depthImage; }
@@ -80,28 +72,26 @@ public:
     VkImage getColorImage() const { return colorImage; }
     VkDeviceMemory getColorImageMemory() const { return colorImageMemory; }
 
-  VkFormat findDepthFormat() {
+    VkFormat findDepthFormat() {
       return findSupportedFormat(
-          {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT},
-          VK_IMAGE_TILING_OPTIMAL,
-          VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+        {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT},
+        VK_IMAGE_TILING_OPTIMAL,
+        VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
       );
     }
 
-
     void recreate(uint32_t newWidth, uint32_t newHeight) {
-        width = newWidth;
-        height = newHeight;
-        cleanup();
+      width = newWidth;
+      height = newHeight;
+      cleanup();
 
-        createSwapChain();
-        createImageViews();
-        createColorResources();
-        createDepthResources();
+      createSwapChain();
+      createImageViews();
+      createColorResources();
+      createDepthResources();
     }
 
-private:
-
+  private:
     std::shared_ptr<VulkanDevice> devicePtr;
     VkSurfaceKHR surface;
     uint32_t width, height;
@@ -112,292 +102,274 @@ private:
     VkExtent2D swapChainExtent{};
     std::vector<VkImageView> swapChainImageViews;
 
-
     std::vector<VkFramebuffer> swapChainFramebuffers;
 
-
-    VkImage depthImage          = VK_NULL_HANDLE;
+    VkImage depthImage = VK_NULL_HANDLE;
     VkDeviceMemory depthImageMemory = VK_NULL_HANDLE;
-    VkImageView depthImageView  = VK_NULL_HANDLE;
+    VkImageView depthImageView = VK_NULL_HANDLE;
 
-    VkImage colorImage          = VK_NULL_HANDLE;
+    VkImage colorImage = VK_NULL_HANDLE;
     VkDeviceMemory colorImageMemory = VK_NULL_HANDLE;
-    VkImageView colorImageView  = VK_NULL_HANDLE;
-
+    VkImageView colorImageView = VK_NULL_HANDLE;
 
     void cleanup() {
+      for (auto framebuffer : swapChainFramebuffers) {
+        vkDestroyFramebuffer(device(), framebuffer, nullptr);
+      }
 
-        for (auto framebuffer : swapChainFramebuffers) {
-            vkDestroyFramebuffer(device(), framebuffer, nullptr);
-        }
+      for (auto imageView : swapChainImageViews) {
+        vkDestroyImageView(device(), imageView, nullptr);
+      }
 
+      vkDestroyImageView(device(), depthImageView, nullptr);
+      vkDestroyImage(device(), depthImage, nullptr);
+      vkFreeMemory(device(), depthImageMemory, nullptr);
 
-        for (auto imageView : swapChainImageViews) {
-            vkDestroyImageView(device(), imageView, nullptr);
-        }
+      vkDestroyImageView(device(), colorImageView, nullptr);
+      vkDestroyImage(device(), colorImage, nullptr);
+      vkFreeMemory(device(), colorImageMemory, nullptr);
 
-
-        vkDestroyImageView(device(), depthImageView, nullptr);
-        vkDestroyImage(device(), depthImage, nullptr);
-        vkFreeMemory(device(), depthImageMemory, nullptr);
-
-
-        vkDestroyImageView(device(), colorImageView, nullptr);
-        vkDestroyImage(device(), colorImage, nullptr);
-        vkFreeMemory(device(), colorImageMemory, nullptr);
-
-
-        if (swapChain != VK_NULL_HANDLE) {
-            vkDestroySwapchainKHR(device(), swapChain, nullptr);
-        }
+      if (swapChain != VK_NULL_HANDLE) {
+        vkDestroySwapchainKHR(device(), swapChain, nullptr);
+      }
     }
-
 
     VkDevice device() const { return devicePtr->getDevice(); }
 
-
     void createSwapChain() {
+      SwapChainSupportDetails swapChainSupport = devicePtr->querySwapChainSupport(devicePtr->getPhysicalDevice());
 
-        SwapChainSupportDetails swapChainSupport = devicePtr->querySwapChainSupport(devicePtr->getPhysicalDevice());
+      VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
+      VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
+      VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
 
-        VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
-        VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
-        VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
+      uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
+      if (swapChainSupport.capabilities.maxImageCount > 0 &&
+        imageCount > swapChainSupport.capabilities.maxImageCount) {
+        imageCount = swapChainSupport.capabilities.maxImageCount;
+      }
 
+      VkSwapchainCreateInfoKHR createInfo{};
+      createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+      createInfo.surface = surface;
+      createInfo.minImageCount = imageCount;
+      createInfo.imageFormat = surfaceFormat.format;
+      createInfo.imageColorSpace = surfaceFormat.colorSpace;
+      createInfo.imageExtent = extent;
+      createInfo.imageArrayLayers = 1;
+      createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-        uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
-        if (swapChainSupport.capabilities.maxImageCount > 0 &&
-            imageCount > swapChainSupport.capabilities.maxImageCount) {
-            imageCount = swapChainSupport.capabilities.maxImageCount;
-        }
+      QueueFamilyIndices indices = devicePtr->getQueueFamilyIndices();
+      uint32_t queueFamilyIndices[] = {
+        indices.graphicsFamily.value(),
+        indices.presentFamily.value()
+      };
 
-        VkSwapchainCreateInfoKHR createInfo{};
-        createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-        createInfo.surface = surface;
-        createInfo.minImageCount = imageCount;
-        createInfo.imageFormat = surfaceFormat.format;
-        createInfo.imageColorSpace = surfaceFormat.colorSpace;
-        createInfo.imageExtent = extent;
-        createInfo.imageArrayLayers = 1;
-        createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+      if (indices.graphicsFamily != indices.presentFamily) {
+        createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+        createInfo.queueFamilyIndexCount = 2;
+        createInfo.pQueueFamilyIndices = queueFamilyIndices;
+      } else {
+        createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+      }
 
-        QueueFamilyIndices indices = devicePtr->getQueueFamilyIndices();
-        uint32_t queueFamilyIndices[] = {
-            indices.graphicsFamily.value(),
-            indices.presentFamily.value()
-        };
+      createInfo.preTransform = swapChainSupport.capabilities.currentTransform;
+      createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+      createInfo.presentMode = presentMode;
+      createInfo.clipped = VK_TRUE;
+      createInfo.oldSwapchain = VK_NULL_HANDLE;
 
-        if (indices.graphicsFamily != indices.presentFamily) {
-            createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
-            createInfo.queueFamilyIndexCount = 2;
-            createInfo.pQueueFamilyIndices = queueFamilyIndices;
-        } else {
-            createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        }
+      if (vkCreateSwapchainKHR(device(), &createInfo, nullptr, &swapChain) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create swap chain!");
+      }
 
-        createInfo.preTransform = swapChainSupport.capabilities.currentTransform;
-        createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-        createInfo.presentMode = presentMode;
-        createInfo.clipped = VK_TRUE;
-        createInfo.oldSwapchain = VK_NULL_HANDLE;
+      vkGetSwapchainImagesKHR(device(), swapChain, &imageCount, nullptr);
+      swapChainImages.resize(imageCount);
+      vkGetSwapchainImagesKHR(device(), swapChain, &imageCount, swapChainImages.data());
 
-        if (vkCreateSwapchainKHR(device(), &createInfo, nullptr, &swapChain) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create swap chain!");
-        }
-
-        vkGetSwapchainImagesKHR(device(), swapChain, &imageCount, nullptr);
-        swapChainImages.resize(imageCount);
-        vkGetSwapchainImagesKHR(device(), swapChain, &imageCount, swapChainImages.data());
-
-        swapChainImageFormat = surfaceFormat.format;
-        swapChainExtent = extent;
+      swapChainImageFormat = surfaceFormat.format;
+      swapChainExtent = extent;
     }
 
     void createImageViews() {
-        swapChainImageViews.resize(swapChainImages.size());
+      swapChainImageViews.resize(swapChainImages.size());
 
-        for (size_t i = 0; i < swapChainImages.size(); i++) {
-            VkImageViewCreateInfo createInfo{};
-            createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-            createInfo.image = swapChainImages[i];
-            createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-            createInfo.format = swapChainImageFormat;
-            createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-            createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-            createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-            createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-            createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            createInfo.subresourceRange.baseMipLevel = 0;
-            createInfo.subresourceRange.levelCount = 1;
-            createInfo.subresourceRange.baseArrayLayer = 0;
-            createInfo.subresourceRange.layerCount = 1;
+      for (size_t i = 0; i < swapChainImages.size(); i++) {
+        VkImageViewCreateInfo createInfo{};
+        createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        createInfo.image = swapChainImages[i];
+        createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        createInfo.format = swapChainImageFormat;
+        createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        createInfo.subresourceRange.baseMipLevel = 0;
+        createInfo.subresourceRange.levelCount = 1;
+        createInfo.subresourceRange.baseArrayLayer = 0;
+        createInfo.subresourceRange.layerCount = 1;
 
-            if (vkCreateImageView(device(), &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS) {
-                throw std::runtime_error("failed to create image views!");
-            }
+        if (vkCreateImageView(device(), &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS) {
+          throw std::runtime_error("failed to create image views!");
         }
+      }
     }
 
-
     void createColorResources() {
-        if (devicePtr->getMsaaSamples() == VK_SAMPLE_COUNT_1_BIT) {
+      if (devicePtr->getMsaaSamples() == VK_SAMPLE_COUNT_1_BIT) {
+        return;
+      }
+      VkFormat colorFormat = swapChainImageFormat;
 
-            return;
-        }
-        VkFormat colorFormat = swapChainImageFormat;
+      createImage(swapChainExtent.width,
+                  swapChainExtent.height,
+                  devicePtr->getMsaaSamples(),
+                  colorFormat,
+                  VK_IMAGE_TILING_OPTIMAL,
+                  VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+                  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                  colorImage,
+                  colorImageMemory);
 
-        createImage(swapChainExtent.width,
-                    swapChainExtent.height,
-                    devicePtr->getMsaaSamples(),
-                    colorFormat,
-                    VK_IMAGE_TILING_OPTIMAL,
-                    VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                    colorImage,
-                    colorImageMemory);
-
-        colorImageView = createImageView(colorImage,
-                                         colorFormat,
-                                         VK_IMAGE_ASPECT_COLOR_BIT,
-                                         1 /*mipLevels*/);
+      colorImageView = createImageView(colorImage,
+                                       colorFormat,
+                                       VK_IMAGE_ASPECT_COLOR_BIT,
+                                       1 /*mipLevels*/);
     }
 
     void createDepthResources() {
-        VkFormat depthFormat = findDepthFormat();
-        createImage(swapChainExtent.width,
-                    swapChainExtent.height,
-                    devicePtr->getMsaaSamples(),
-                    depthFormat,
-                    VK_IMAGE_TILING_OPTIMAL,
-                    VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                    depthImage,
-                    depthImageMemory);
+      VkFormat depthFormat = findDepthFormat();
+      createImage(swapChainExtent.width,
+                  swapChainExtent.height,
+                  devicePtr->getMsaaSamples(),
+                  depthFormat,
+                  VK_IMAGE_TILING_OPTIMAL,
+                  VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                  depthImage,
+                  depthImageMemory);
 
-        depthImageView = createImageView(depthImage,
-                                         depthFormat,
-                                         VK_IMAGE_ASPECT_DEPTH_BIT,
-                                         1 /*mipLevels*/);
+      depthImageView = createImageView(depthImage,
+                                       depthFormat,
+                                       VK_IMAGE_ASPECT_DEPTH_BIT,
+                                       1 /*mipLevels*/);
     }
 
+    VkFormat findSupportedFormat(const std::vector<VkFormat> &candidates,
+                                 VkImageTiling tiling,
+                                 VkFormatFeatureFlags features) {
+      for (VkFormat format : candidates) {
+        VkFormatProperties props;
+        vkGetPhysicalDeviceFormatProperties(devicePtr->getPhysicalDevice(), format, &props);
 
-    VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates,
-                                VkImageTiling tiling,
-                                VkFormatFeatureFlags features) {
-        for (VkFormat format : candidates) {
-            VkFormatProperties props;
-            vkGetPhysicalDeviceFormatProperties(devicePtr->getPhysicalDevice(), format, &props);
-
-            if (tiling == VK_IMAGE_TILING_LINEAR &&
-                (props.linearTilingFeatures & features) == features) {
-                return format;
-            } else if (tiling == VK_IMAGE_TILING_OPTIMAL &&
-                       (props.optimalTilingFeatures & features) == features) {
-                return format;
-            }
+        if (tiling == VK_IMAGE_TILING_LINEAR &&
+          (props.linearTilingFeatures & features) == features) {
+          return format;
+        } else if (tiling == VK_IMAGE_TILING_OPTIMAL &&
+          (props.optimalTilingFeatures & features) == features) {
+          return format;
         }
-        throw std::runtime_error("failed to find supported format!");
+      }
+      throw std::runtime_error("failed to find supported format!");
     }
 
-
-    void createImage(uint32_t w, uint32_t h,
+    void createImage(uint32_t w,
+                     uint32_t h,
                      VkSampleCountFlagBits samples,
                      VkFormat format,
                      VkImageTiling tiling,
                      VkImageUsageFlags usage,
                      VkMemoryPropertyFlags properties,
-                     VkImage& image,
-                     VkDeviceMemory& imageMemory) {
-        VkImageCreateInfo imageInfo{};
-        imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        imageInfo.imageType = VK_IMAGE_TYPE_2D;
-        imageInfo.extent.width = w;
-        imageInfo.extent.height = h;
-        imageInfo.extent.depth = 1;
-        imageInfo.mipLevels = 1;
-        imageInfo.arrayLayers = 1;
-        imageInfo.format = format;
-        imageInfo.tiling = tiling;
-        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        imageInfo.usage = usage;
-        imageInfo.samples = samples;
-        imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+                     VkImage &image,
+                     VkDeviceMemory &imageMemory) {
+      VkImageCreateInfo imageInfo{};
+      imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+      imageInfo.imageType = VK_IMAGE_TYPE_2D;
+      imageInfo.extent.width = w;
+      imageInfo.extent.height = h;
+      imageInfo.extent.depth = 1;
+      imageInfo.mipLevels = 1;
+      imageInfo.arrayLayers = 1;
+      imageInfo.format = format;
+      imageInfo.tiling = tiling;
+      imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+      imageInfo.usage = usage;
+      imageInfo.samples = samples;
+      imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-        if (vkCreateImage(device(), &imageInfo, nullptr, &image) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create image!");
-        }
+      if (vkCreateImage(device(), &imageInfo, nullptr, &image) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create image!");
+      }
 
-        VkMemoryRequirements memRequirements;
-        vkGetImageMemoryRequirements(device(), image, &memRequirements);
+      VkMemoryRequirements memRequirements;
+      vkGetImageMemoryRequirements(device(), image, &memRequirements);
 
-        VkMemoryAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.allocationSize = memRequirements.size;
-        allocInfo.memoryTypeIndex = devicePtr->findMemoryType(memRequirements.memoryTypeBits, properties);
+      VkMemoryAllocateInfo allocInfo{};
+      allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+      allocInfo.allocationSize = memRequirements.size;
+      allocInfo.memoryTypeIndex = devicePtr->findMemoryType(memRequirements.memoryTypeBits, properties);
 
-        if (vkAllocateMemory(device(), &allocInfo, nullptr, &imageMemory) != VK_SUCCESS) {
-            throw std::runtime_error("failed to allocate image memory!");
-        }
+      if (vkAllocateMemory(device(), &allocInfo, nullptr, &imageMemory) != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate image memory!");
+      }
 
-        vkBindImageMemory(device(), image, imageMemory, 0);
+      vkBindImageMemory(device(), image, imageMemory, 0);
     }
-
 
     VkImageView createImageView(VkImage image,
                                 VkFormat format,
                                 VkImageAspectFlags aspectFlags,
                                 uint32_t mipLevels) {
-        VkImageViewCreateInfo viewInfo{};
-        viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        viewInfo.image = image;
-        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        viewInfo.format = format;
-        viewInfo.subresourceRange.aspectMask = aspectFlags;
-        viewInfo.subresourceRange.baseMipLevel = 0;
-        viewInfo.subresourceRange.levelCount = mipLevels;
-        viewInfo.subresourceRange.baseArrayLayer = 0;
-        viewInfo.subresourceRange.layerCount = 1;
+      VkImageViewCreateInfo viewInfo{};
+      viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+      viewInfo.image = image;
+      viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+      viewInfo.format = format;
+      viewInfo.subresourceRange.aspectMask = aspectFlags;
+      viewInfo.subresourceRange.baseMipLevel = 0;
+      viewInfo.subresourceRange.levelCount = mipLevels;
+      viewInfo.subresourceRange.baseArrayLayer = 0;
+      viewInfo.subresourceRange.layerCount = 1;
 
-        VkImageView imageView;
-        if (vkCreateImageView(device(), &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create texture image view!");
-        }
-        return imageView;
+      VkImageView imageView;
+      if (vkCreateImageView(device(), &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create texture image view!");
+      }
+      return imageView;
     }
 
-
-    VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
-        for (const auto& availableFormat : availableFormats) {
-            if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB &&
-                availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-                return availableFormat;
-            }
+    VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &availableFormats) {
+      for (const auto &availableFormat : availableFormats) {
+        if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB &&
+          availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+          return availableFormat;
         }
-        return availableFormats[0];
+      }
+      return availableFormats[0];
     }
 
-    VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
-        for (const auto& mode : availablePresentModes) {
-            if (mode == VK_PRESENT_MODE_MAILBOX_KHR) {
-                return mode;
-            }
+    VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR> &availablePresentModes) {
+      for (const auto &mode : availablePresentModes) {
+        if (mode == VK_PRESENT_MODE_MAILBOX_KHR) {
+          return mode;
         }
-        return VK_PRESENT_MODE_FIFO_KHR;
+      }
+      return VK_PRESENT_MODE_FIFO_KHR;
     }
 
-    VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
-        if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
-            return capabilities.currentExtent;
-        } else {
-
-            VkExtent2D actualExtent = { width, height };
-            actualExtent.width = std::clamp(actualExtent.width,
-                                            capabilities.minImageExtent.width,
-                                            capabilities.maxImageExtent.width);
-            actualExtent.height = std::clamp(actualExtent.height,
-                                             capabilities.minImageExtent.height,
-                                             capabilities.maxImageExtent.height);
-            return actualExtent;
-        }
+    VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities) {
+      if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
+        return capabilities.currentExtent;
+      } else {
+        VkExtent2D actualExtent = {width, height};
+        actualExtent.width = std::clamp(actualExtent.width,
+                                        capabilities.minImageExtent.width,
+                                        capabilities.maxImageExtent.width);
+        actualExtent.height = std::clamp(actualExtent.height,
+                                         capabilities.minImageExtent.height,
+                                         capabilities.maxImageExtent.height);
+        return actualExtent;
+      }
     }
 };
