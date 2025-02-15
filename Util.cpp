@@ -7,12 +7,15 @@
 
 struct InstanceData {
   glm::vec2 offset;
+  int hovered;
 };
 
 struct Vertex {
   glm::vec3 pos;
   glm::vec3 color;
+  glm::vec2 texCoord;
 
+  // Binding description for per-vertex data
   static VkVertexInputBindingDescription getBindingDescription() {
     VkVertexInputBindingDescription bindingDescription{};
     bindingDescription.binding = 0;
@@ -21,18 +24,17 @@ struct Vertex {
     return bindingDescription;
   }
 
-  // In Vertex struct
+  // Binding description for per-instance data
   static VkVertexInputBindingDescription getInstanceBindingDescription() {
     VkVertexInputBindingDescription bindingDescription{};
-    bindingDescription.binding = 1; // Binding 1 for instance data
+    bindingDescription.binding = 1; // binding 1 for instance data
     bindingDescription.stride = sizeof(InstanceData);
     bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
     return bindingDescription;
   }
 
-
-  static std::array<VkVertexInputAttributeDescription, 3> getAttributeDescriptions() {
-    std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions{};
+  static std::array<VkVertexInputAttributeDescription, 5> getAttributeDescriptions() {
+    std::array<VkVertexInputAttributeDescription, 5> attributeDescriptions{};
 
     // Position attribute
     attributeDescriptions[0].binding = 0;
@@ -46,13 +48,24 @@ struct Vertex {
     attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
     attributeDescriptions[1].offset = offsetof(Vertex, color);
 
-    // Instance offset attribute
-    attributeDescriptions[2].binding = 1;
+    // TexCoord attribute
+    attributeDescriptions[2].binding = 0;
     attributeDescriptions[2].location = 2;
     attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
-    attributeDescriptions[2].offset = offsetof(InstanceData, offset);
+    attributeDescriptions[2].offset = offsetof(Vertex, texCoord);
+
+    // Instance offset attribute
+    attributeDescriptions[3].binding = 1;
+    attributeDescriptions[3].location = 3;
+    attributeDescriptions[3].format = VK_FORMAT_R32G32_SFLOAT;
+    attributeDescriptions[3].offset = offsetof(InstanceData, offset);
+
+    // Instance hovered flag (as an integer)
+    attributeDescriptions[4].binding = 1;
+    attributeDescriptions[4].location = 4;
+    attributeDescriptions[4].format = VK_FORMAT_R32_SINT;
+    attributeDescriptions[4].offset = offsetof(InstanceData, hovered);
 
     return attributeDescriptions;
   }
-
 };

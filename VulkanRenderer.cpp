@@ -20,6 +20,8 @@
 #include <stdexcept>
 #include <array>
 #include <vector>
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 
 class VulkanRenderer {
   public:
@@ -78,6 +80,10 @@ class VulkanRenderer {
       createIndexBuffer(internalIndices, internalIndexBuffer, internalIndexBufferMemory);
       prepareInstanceData();
 
+      std::vector<std::string> atlasTextures = {"../textures/grass.png", "../textures/dirt.png", "../textures/star.png"};
+      createTextureAtlas(atlasTextures);
+      vulkanDescriptors->updateTextureDescriptor(atlasImageView, atlasSampler);
+
       vulkanSync = std::make_unique<VulkanSync>(
         vulkanDevice,
         MAX_FRAMES_IN_FLIGHT
@@ -107,6 +113,12 @@ class VulkanRenderer {
 
       vkDestroyBuffer(vkDev, internalInstanceBuffer, nullptr);
       vkFreeMemory(vkDev, internalInstanceBufferMemory, nullptr);
+
+
+      vkDestroySampler(vkDev, atlasSampler, nullptr);
+      vkDestroyImageView(vkDev, atlasImageView, nullptr);
+      vkDestroyImage(vkDev, atlasImage, nullptr);
+      vkFreeMemory(vkDev, atlasImageMemory, nullptr);
 
       vulkanSync.reset();
       vulkanCommands.reset();
@@ -229,6 +241,10 @@ class VulkanRenderer {
     std::unique_ptr<VulkanCommands> vulkanCommands;
     std::unique_ptr<VulkanSync> vulkanSync;
     std::shared_ptr<VulkanWindow> vulkanWindow;
+    VkImage atlasImage = VK_NULL_HANDLE;
+    VkDeviceMemory atlasImageMemory = VK_NULL_HANDLE;
+    VkImageView atlasImageView = VK_NULL_HANDLE;
+    VkSampler atlasSampler = VK_NULL_HANDLE;
 
     static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
     uint32_t currentFrame = 0;
@@ -557,75 +573,66 @@ class VulkanRenderer {
       }
     }
 
-    static void offsetNVertSurfaceWithCenter(
-      const std::vector<Vertex> &surfaceVerts,
-      std::vector<Vertex> &newVertices,
-      const float offset,
-      const glm::vec3 &color,
-      Vertex &centerVertex) {
-      glm::vec3 center{0.0f};
+  static void offsetNVertSurfaceWithCenter(
+    const std::vector<Vertex> &surfaceVerts,
+    std::vector<Vertex> &newVertices,
+    const float offset,
+    const glm::vec3 &color,
+    Vertex &centerVertex) {
+
+      glm::vec3 centerPos{0.0f};
+      glm::vec2 centerUV{0.0f};
       for (const auto &v : surfaceVerts) {
-        center += v.pos;
+        centerPos += v.pos;
+        centerUV += v.texCoord;  // Sum up the UVs
       }
-      center /= surfaceVerts.size();
+      centerPos /= static_cast<float>(surfaceVerts.size());
+      centerUV /= static_cast<float>(surfaceVerts.size());
 
       for (const auto &v : surfaceVerts) {
-        glm::vec3 dir = glm::normalize(center - v.pos);
+        glm::vec3 dir = glm::normalize(centerPos - v.pos);
         Vertex vert = v;
         vert.pos += dir * offset;
         vert.color = color;
+        // Optionally, you can modify vert.texCoord here if needed
         newVertices.push_back(vert);
       }
 
-      centerVertex = {center, color};
+      centerVertex = {centerPos, color, centerUV};
     }
 
-    static void offsetNVertSurface(const std::vector<Vertex> &surfaceVerts,
-                                   std::vector<Vertex> &verticesBuffer,
-                                   const float offset,
-                                   const glm::vec3 &color) {
-      glm::vec3 center{0.0f};
-      for (const auto &v : surfaceVerts) {
-        center += v.pos;
-      }
-      center /= surfaceVerts.size();
-
-      for (auto v : surfaceVerts) {
-        glm::vec3 dir = glm::normalize(v.pos - center);
-        v.pos += dir * offset;
-        v.color = color;
-
-        verticesBuffer.push_back(v);
-      }
-    }
-
-    static void offsetNVertSurface(
+  static void offsetNVertSurface(
       const std::vector<Vertex>::iterator &endIt,
       std::vector<Vertex> &verticesBuffer,
-      const float offset,
+      float offset,
       const glm::vec3 &color,
-      int n) {
+      int n)
+    {
       glm::vec3 center{0.0f};
       auto startIt = endIt - n;
 
+      // Find center of these n vertices
       for (auto it = startIt; it != endIt; ++it) {
         center += it->pos;
       }
       center /= static_cast<float>(n);
 
       std::vector<Vertex> newVertices;
+      newVertices.reserve(n);
 
       for (auto it = startIt; it != endIt; ++it) {
-        glm::vec3 dir = glm::normalize(it->pos - center);
-        Vertex vert = {it->pos, it->color};
+        // Instead of discarding it->texCoord, copy the entire old vertex:
+        Vertex vert = *it;
+        // Then offset position and (optionally) recolor:
+        glm::vec3 dir = glm::normalize(vert.pos - center);
         vert.pos += dir * offset;
         vert.color = color;
-
         newVertices.push_back(vert);
       }
 
       verticesBuffer.insert(verticesBuffer.end(), newVertices.begin(), newVertices.end());
     }
+
 
     void generateNSidedShapeWithCenterVertices(int n,
                                                float radius,
@@ -636,13 +643,15 @@ class VulkanRenderer {
       float angleIncrement = glm::radians(360.0f / static_cast<float>(n));
       for (int i = 0; i < n; ++i) {
         float angle = i * angleIncrement + rotationAngle;
-
         float x = radius * cos(angle);
         float y = radius * sin(angle);
         float z = height;
-        vertexVec.push_back({{x, y, z}, color});
+
+        float u = 0.5f + 0.5f * cos(angle);
+        float v = 0.5f + 0.5f * sin(angle);
+        vertexVec.push_back({{x, y, z}, color, {u, v}});
       }
-      vertexVec.push_back({{0.0f, 0.0f, height}, color});
+      vertexVec.push_back({{0.0f, 0.0f, height}, color, {0.5f, 0.5f}});
     }
     void generateNSidedShapeVertices(int n,
                                      float radius,
@@ -739,6 +748,7 @@ class VulkanRenderer {
         for (int x = 0; x < GRID_WIDTH; ++x) {
           InstanceData inst{};
           inst.offset = calculatePositionOffset(x, y);
+          inst.hovered = 0;
           if (isEdgeHexagon(x, y)) {
             edgeInstanceData.push_back(inst);
           } else {
@@ -750,6 +760,111 @@ class VulkanRenderer {
       createInstanceBuffer(edgeInstanceData, edgeInstanceBuffer, edgeInstanceBufferMemory);
       createInstanceBuffer(internalInstanceData, internalInstanceBuffer, internalInstanceBufferMemory);
     }
+  void createTextureAtlas(const std::vector<std::string>& texturePaths) {
+  // Load the first image to get width/height
+  int texWidth, texHeight, texChannels;
+  stbi_uc* firstPixels = stbi_load(texturePaths[0].c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+  if (!firstPixels) {
+    throw std::runtime_error("Failed to load texture: " + texturePaths[0]);
+  }
+  const int imageSize = texWidth * texHeight * 4;
+  const size_t numTextures = texturePaths.size();
+  // Arrange atlas as a horizontal row.
+  int atlasWidth = texWidth * static_cast<int>(numTextures);
+  int atlasHeight = texHeight;
+  std::vector<stbi_uc> atlasPixels(atlasWidth * atlasHeight * 4);
+
+  // Copy first image into atlas at column 0.
+  memcpy(&atlasPixels[0], firstPixels, imageSize);
+  stbi_image_free(firstPixels);
+
+  // Load the rest of the images and copy into the atlas.
+  for (size_t i = 1; i < numTextures; i++) {
+    int w, h, channels;
+    stbi_uc* pixels = stbi_load(texturePaths[i].c_str(), &w, &h, &channels, STBI_rgb_alpha);
+    if (!pixels) {
+      throw std::runtime_error("Failed to load texture: " + texturePaths[i]);
+    }
+    if (w != texWidth || h != texHeight) {
+      throw std::runtime_error("Texture sizes do not match for atlas.");
+    }
+    // Copy row by row into the correct horizontal offset.
+    for (int row = 0; row < texHeight; row++) {
+      memcpy(&atlasPixels[(row * atlasWidth + i * texWidth) * 4],
+             &pixels[row * texWidth * 4],
+             texWidth * 4);
+    }
+    stbi_image_free(pixels);
+  }
+
+  // Now create a Vulkan image for the atlas.
+  // (For brevity, this example uses “helper” functions that you might have in your VulkanDevice class.)
+  VkDeviceSize imageSizeBytes = atlasPixels.size();
+
+  VkBuffer stagingBuffer;
+  VkDeviceMemory stagingBufferMemory;
+  vulkanDevice->createBuffer(imageSizeBytes,
+                             VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                             stagingBuffer,
+                             stagingBufferMemory);
+
+  // Copy the pixel data into the staging buffer.
+  void* data;
+  vkMapMemory(vulkanDevice->getDevice(), stagingBufferMemory, 0, imageSizeBytes, 0, &data);
+  memcpy(data, atlasPixels.data(), static_cast<size_t>(imageSizeBytes));
+  vkUnmapMemory(vulkanDevice->getDevice(), stagingBufferMemory);
+
+  // Create the destination image with transfer dst and sampled usage.
+  vulkanDevice->createImage(atlasWidth, atlasHeight,
+                            VK_FORMAT_R8G8B8A8_SRGB,
+                            VK_IMAGE_TILING_OPTIMAL,
+                            VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                            atlasImage,
+                            atlasImageMemory);
+
+  // Transition the image layout and copy from the staging buffer.
+  vulkanDevice->transitionImageLayout(atlasImage, VK_FORMAT_R8G8B8A8_SRGB,
+                                      VK_IMAGE_LAYOUT_UNDEFINED,
+                                      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+  vulkanDevice->copyBufferToImage(stagingBuffer, atlasImage,
+                                  static_cast<uint32_t>(atlasWidth),
+                                  static_cast<uint32_t>(atlasHeight));
+  vulkanDevice->transitionImageLayout(atlasImage, VK_FORMAT_R8G8B8A8_SRGB,
+                                      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+  // Cleanup staging buffer.
+  vkDestroyBuffer(vulkanDevice->getDevice(), stagingBuffer, nullptr);
+  vkFreeMemory(vulkanDevice->getDevice(), stagingBufferMemory, nullptr);
+
+  // Create an image view for the atlas.
+  atlasImageView = vulkanDevice->createImageView(atlasImage, VK_FORMAT_R8G8B8A8_SRGB);
+
+  // Create a sampler for the atlas.
+  VkSamplerCreateInfo samplerInfo{};
+  samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+  samplerInfo.magFilter = VK_FILTER_LINEAR;
+  samplerInfo.minFilter = VK_FILTER_LINEAR;
+  samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+  samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+  samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+  samplerInfo.anisotropyEnable = VK_TRUE;
+  samplerInfo.maxAnisotropy = 16;
+  samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+  samplerInfo.unnormalizedCoordinates = VK_FALSE;
+  samplerInfo.compareEnable = VK_FALSE;
+  samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+  samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+  samplerInfo.mipLodBias = 0.0f;
+  samplerInfo.minLod = 0.0f;
+  samplerInfo.maxLod = 0.0f;
+
+  if (vkCreateSampler(vulkanDevice->getDevice(), &samplerInfo, nullptr, &atlasSampler) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create texture sampler!");
+  }
+}
 
     static constexpr int GRID_WIDTH = 10;
     static constexpr int GRID_HEIGHT = 10;
