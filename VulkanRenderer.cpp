@@ -13,7 +13,7 @@
 #include "VulkanCommands.cpp"
 #include "VulkanSync.cpp"
 
-#include "Util.h"
+#include "Util.cpp"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
