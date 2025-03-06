@@ -2,7 +2,7 @@
 // Created by Elijah Crain on 2/10/25.
 //
 #pragma once
-
+#define TINYOBJLOADER_IMPLEMENTATION
 #include "VulkanWindow.cpp"
 #include "VulkanInstance.cpp"
 #include "VulkanDevice.cpp"
@@ -20,6 +20,7 @@
 #include <stdexcept>
 #include <array>
 #include <vector>
+#include "tiny_object_loader.h" // Add tinyobjloader include
 
 class VulkanRenderer {
   public:
@@ -71,11 +72,12 @@ class VulkanRenderer {
         MAX_FRAMES_IN_FLIGHT
       );
 
-      generateHexagonData();
-      createVertexBuffer(edgeVertices, edgeVertexBuffer, edgeVertexBufferMemory);
-      createIndexBuffer(edgeIndices, edgeIndexBuffer, edgeIndexBufferMemory);
-      createVertexBuffer(internalVertices, internalVertexBuffer, internalVertexBufferMemory);
-      createIndexBuffer(internalIndices, internalIndexBuffer, internalIndexBufferMemory);
+      // Load the STL model instead of generating hexagon data
+      loadModel("../models/terrain.obj");
+      createVertexBuffer(vertices, vertexBuffer, vertexBufferMemory);
+      createIndexBuffer(indices, indexBuffer, indexBufferMemory);
+
+      // Create instance data if you want to render multiple instances of the model
       prepareInstanceData();
 
       vulkanSync = std::make_unique<VulkanSync>(
@@ -90,23 +92,14 @@ class VulkanRenderer {
     void cleanup() {
       auto vkDev = vulkanDevice->getDevice();
 
-      vkDestroyBuffer(vkDev, edgeVertexBuffer, nullptr);
-      vkFreeMemory(vkDev, edgeVertexBufferMemory, nullptr);
+      vkDestroyBuffer(vkDev, vertexBuffer, nullptr);
+      vkFreeMemory(vkDev, vertexBufferMemory, nullptr);
 
-      vkDestroyBuffer(vkDev, edgeIndexBuffer, nullptr);
-      vkFreeMemory(vkDev, edgeIndexBufferMemory, nullptr);
+      vkDestroyBuffer(vkDev, indexBuffer, nullptr);
+      vkFreeMemory(vkDev, indexBufferMemory, nullptr);
 
-      vkDestroyBuffer(vkDev, internalVertexBuffer, nullptr);
-      vkFreeMemory(vkDev, internalVertexBufferMemory, nullptr);
-
-      vkDestroyBuffer(vkDev, internalIndexBuffer, nullptr);
-      vkFreeMemory(vkDev, internalIndexBufferMemory, nullptr);
-
-      vkDestroyBuffer(vkDev, edgeInstanceBuffer, nullptr);
-      vkFreeMemory(vkDev, edgeInstanceBufferMemory, nullptr);
-
-      vkDestroyBuffer(vkDev, internalInstanceBuffer, nullptr);
-      vkFreeMemory(vkDev, internalInstanceBufferMemory, nullptr);
+      vkDestroyBuffer(vkDev, instanceBuffer, nullptr);
+      vkFreeMemory(vkDev, instanceBufferMemory, nullptr);
 
       vulkanSync.reset();
       vulkanCommands.reset();
@@ -237,28 +230,18 @@ class VulkanRenderer {
     uint32_t width = 800;
     uint32_t height = 600;
 
-    std::vector<Vertex> edgeVertices;
-    std::vector<uint16_t> edgeIndices;
-    std::vector<Vertex> internalVertices;
-    std::vector<uint16_t> internalIndices;
+    // Model data
+    std::vector<Vertex> vertices;
+    std::vector<uint16_t> indices;
+    VkBuffer vertexBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
+    VkBuffer indexBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory indexBufferMemory = VK_NULL_HANDLE;
 
-    VkBuffer edgeVertexBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory edgeVertexBufferMemory = VK_NULL_HANDLE;
-    VkBuffer edgeIndexBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory edgeIndexBufferMemory = VK_NULL_HANDLE;
-
-    VkBuffer internalVertexBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory internalVertexBufferMemory = VK_NULL_HANDLE;
-    VkBuffer internalIndexBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory internalIndexBufferMemory = VK_NULL_HANDLE;
-
-    std::vector<InstanceData> edgeInstanceData;
-    std::vector<InstanceData> internalInstanceData;
-
-    VkBuffer edgeInstanceBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory edgeInstanceBufferMemory = VK_NULL_HANDLE;
-    VkBuffer internalInstanceBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory internalInstanceBufferMemory = VK_NULL_HANDLE;
+    // Instance data
+    std::vector<InstanceData> instanceData;
+    VkBuffer instanceBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory instanceBufferMemory = VK_NULL_HANDLE;
 
     void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, uint32_t currentFrame) {
       VkCommandBufferBeginInfo beginInfo{};
@@ -311,28 +294,17 @@ class VulkanRenderer {
 
       VkDeviceSize offsets[] = {0};
 
-      vkCmdBindVertexBuffers(commandBuffer, 0, 1, &edgeVertexBuffer, offsets);
+      // Bind vertex and instance buffers
+      vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexBuffer, offsets);
+      vkCmdBindVertexBuffers(commandBuffer, 1, 1, &instanceBuffer, offsets);
 
-      vkCmdBindVertexBuffers(commandBuffer, 1, 1, &edgeInstanceBuffer, offsets);
+      // Bind index buffer
+      vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
 
-      vkCmdBindIndexBuffer(commandBuffer, edgeIndexBuffer, 0, VK_INDEX_TYPE_UINT16);
-
+      // Draw the model with instancing
       vkCmdDrawIndexed(commandBuffer,
-                       static_cast<uint32_t>(edgeIndices.size()),
-                       static_cast<uint32_t>(edgeInstanceData.size()),
-                       0,
-                       0,
-                       0);
-
-      vkCmdBindVertexBuffers(commandBuffer, 0, 1, &internalVertexBuffer, offsets);
-
-      vkCmdBindVertexBuffers(commandBuffer, 1, 1, &internalInstanceBuffer, offsets);
-
-      vkCmdBindIndexBuffer(commandBuffer, internalIndexBuffer, 0, VK_INDEX_TYPE_UINT16);
-
-      vkCmdDrawIndexed(commandBuffer,
-                       static_cast<uint32_t>(internalIndices.size()),
-                       static_cast<uint32_t>(internalInstanceData.size()),
+                       static_cast<uint32_t>(indices.size()),
+                       static_cast<uint32_t>(instanceData.size()),
                        0,
                        0,
                        0);
@@ -344,27 +316,138 @@ class VulkanRenderer {
       }
     }
 
-    [[nodiscard]] bool isEdgeHexagon(int x, int y) const {
-      return (x == 0 || x == GRID_WIDTH - 1 || y == 0 || y == GRID_HEIGHT - 1);
+    void loadModel(const std::string& modelPath) {
+    tinyobj::attrib_t attrib;
+    std::vector<tinyobj::shape_t> shapes;
+    std::vector<tinyobj::material_t> materials;
+    std::string warn, err;
+
+    if (!LoadObj(&attrib, &shapes, &materials, &warn, &err, modelPath.c_str())) {
+        throw std::runtime_error(warn + err);
     }
 
-    [[nodiscard]] glm::vec2 calculatePositionOffset(const int gridX, const int gridY) const {
-      float xOffset = (static_cast<float>(gridX) - static_cast<float>(GRID_WIDTH - 1) / 2.0f) * 1.5f;
-      float yOffset = (static_cast<float>(gridY) - static_cast<float>(GRID_HEIGHT - 1) / 2.0f) * sqrt(3.0f);
+    // Generate vertex and index data from the loaded model
+    std::unordered_map<Vertex, uint32_t> uniqueVertices{};
 
-      if (gridY % 2 == 1) {
-        xOffset += 0.75f;
-      }
+    for (const auto& shape : shapes) {
+        for (const auto& index : shape.mesh.indices) {
+            Vertex vertex{};
 
-      xOffset *= 0.1167f;
-      yOffset *= 0.0875f;
+            // Position
+            vertex.pos = {
+                attrib.vertices[3 * index.vertex_index + 0],
+                attrib.vertices[3 * index.vertex_index + 1],
+                attrib.vertices[3 * index.vertex_index + 2]
+            };
 
-      return {xOffset, yOffset};
+            // Set a default color if there are no colors in the model
+            // You can use normals to generate colors
+            if (index.normal_index >= 0) {
+                float nx = attrib.normals[3 * index.normal_index + 0];
+                float ny = attrib.normals[3 * index.normal_index + 1];
+                float nz = attrib.normals[3 * index.normal_index + 2];
+
+                // Convert normal to color (normalize to 0-1 range)
+                vertex.color = {
+                    (nx + 1.0f) * 0.5f,
+                    (ny + 1.0f) * 0.5f,
+                    (nz + 1.0f) * 0.5f
+                };
+            } else {
+                // Default color if no normal
+                vertex.color = {0.8f, 0.8f, 0.8f};
+            }
+
+            // Add to vertices and indices
+            if (uniqueVertices.count(vertex) == 0) {
+                uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
+                vertices.push_back(vertex);
+            }
+
+            indices.push_back(static_cast<uint16_t>(uniqueVertices[vertex]));
+        }
     }
 
-    void createInstanceBuffer(const std::vector<InstanceData> &instanceData,
-                              VkBuffer &buffer,
-                              VkDeviceMemory &bufferMemory) {
+    // Check if we need to truncate indices if they exceed uint16_t limit
+    if (vertices.size() > UINT16_MAX) {
+        throw std::runtime_error("Model has too many vertices for uint16_t indices!");
+    }
+
+    std::cout << "Loaded model with " << vertices.size() << " vertices and "
+              << indices.size() << " indices" << std::endl;
+}
+
+    void createVertexBuffer(const std::vector<Vertex>& vertices,
+                            VkBuffer& vertexBuffer,
+                            VkDeviceMemory& vertexBufferMemory) {
+      VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+
+      VkBuffer stagingBuffer;
+      VkDeviceMemory stagingBufferMemory;
+      vulkanDevice->createBuffer(
+        bufferSize,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        stagingBuffer,
+        stagingBufferMemory
+      );
+
+      void* data;
+      vkMapMemory(vulkanDevice->getDevice(), stagingBufferMemory, 0, bufferSize, 0, &data);
+      memcpy(data, vertices.data(), (size_t)bufferSize);
+      vkUnmapMemory(vulkanDevice->getDevice(), stagingBufferMemory);
+
+      vulkanDevice->createBuffer(
+        bufferSize,
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        vertexBuffer,
+        vertexBufferMemory
+      );
+
+      vulkanDevice->copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
+
+      vkDestroyBuffer(vulkanDevice->getDevice(), stagingBuffer, nullptr);
+      vkFreeMemory(vulkanDevice->getDevice(), stagingBufferMemory, nullptr);
+    }
+
+    void createIndexBuffer(const std::vector<uint16_t>& indices,
+                           VkBuffer& indexBuffer,
+                           VkDeviceMemory& indexBufferMemory) {
+      VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
+
+      VkBuffer stagingBuffer;
+      VkDeviceMemory stagingBufferMemory;
+      vulkanDevice->createBuffer(
+        bufferSize,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        stagingBuffer,
+        stagingBufferMemory
+      );
+
+      void* data;
+      vkMapMemory(vulkanDevice->getDevice(), stagingBufferMemory, 0, bufferSize, 0, &data);
+      memcpy(data, indices.data(), (size_t)bufferSize);
+      vkUnmapMemory(vulkanDevice->getDevice(), stagingBufferMemory);
+
+      vulkanDevice->createBuffer(
+        bufferSize,
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        indexBuffer,
+        indexBufferMemory
+      );
+
+      vulkanDevice->copyBuffer(stagingBuffer, indexBuffer, bufferSize);
+
+      vkDestroyBuffer(vulkanDevice->getDevice(), stagingBuffer, nullptr);
+      vkFreeMemory(vulkanDevice->getDevice(), stagingBufferMemory, nullptr);
+    }
+
+    void createInstanceBuffer(const std::vector<InstanceData>& instanceData,
+                              VkBuffer& buffer,
+                              VkDeviceMemory& bufferMemory) {
       VkDeviceSize bufferSize = sizeof(InstanceData) * instanceData.size();
       vulkanDevice->createBuffer(bufferSize,
                                  VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
@@ -372,385 +455,30 @@ class VulkanRenderer {
                                  buffer,
                                  bufferMemory);
 
-      void *data;
+      void* data;
       vkMapMemory(vulkanDevice->getDevice(), bufferMemory, 0, bufferSize, 0, &data);
-      memcpy(data, instanceData.data(), (size_t) bufferSize);
+      memcpy(data, instanceData.data(), (size_t)bufferSize);
       vkUnmapMemory(vulkanDevice->getDevice(), bufferMemory);
     }
 
-    void generateHexagonData() {
-      generateHexagonMesh(true, edgeVertices, edgeIndices);
-
-      generateHexagonMesh(false, internalVertices, internalIndices);
-    }
-
-    void generateHexagonMesh(bool includeSides, std::vector<Vertex> &vertices, std::vector<uint16_t> &indices) {
-      constexpr float radius_outer = 1.0f;
-      constexpr float radius_inner = 0.9f;
-      constexpr float rotationAngle = glm::radians(30.0f);
-      constexpr float height = 1.0f;
-      constexpr auto blackColor = glm::vec3(0.0f, 0.0f, 0.0f);
-      constexpr auto greenColor = glm::vec3(0.293f, 0.711f, 0.129f);
-      constexpr auto brownColor = glm::vec3(0.367f, 0.172f, 0.039f);
-      constexpr auto whiteColor = glm::vec3(1.0f, 1.0f, 1.0f);
-
-      const auto baseIndexInnerGreen = static_cast<uint16_t>(vertices.size());
-      generateNSidedShapeWithCenterVertices(6, radius_inner, rotationAngle, height, greenColor, vertices);
-      auto centerIndex = static_cast<uint16_t>(vertices.size() - 1);
-
-      for (uint16_t i = 0; i < 6; ++i) {
-        indices.push_back(baseIndexInnerGreen + i);
-        indices.push_back(baseIndexInnerGreen + ((i + 1) % 6));
-        indices.push_back(centerIndex);
-      }
-
-      const auto baseIndexInnerBlack = static_cast<uint16_t>(vertices.size());
-      offsetNVertSurface(vertices.end() - 1, vertices, 0.0f, blackColor, 6);
-
-      const auto baseIndexOuter = static_cast<uint16_t>(vertices.size());
-      offsetNVertSurface(vertices.end(), vertices, 0.111f, blackColor, 6);
-
-      for (uint16_t i = 0; i < 6; ++i) {
-        indices.push_back(baseIndexInnerBlack + i);
-        indices.push_back(baseIndexOuter + i);
-        indices.push_back(baseIndexOuter + ((i + 1) % 6));
-
-        indices.push_back(baseIndexInnerBlack + i);
-        indices.push_back(baseIndexOuter + ((i + 1) % 6));
-        indices.push_back(baseIndexInnerBlack + ((i + 1) % 6));
-      }
-
-      const auto baseIndexInnerGreenBot = static_cast<uint16_t>(vertices.size());
-      generateNSidedShapeWithCenterVertices(6, radius_inner, rotationAngle, -height, whiteColor, vertices);
-      auto centerIndexBot = static_cast<uint16_t>(vertices.size() - 1);
-
-      for (uint16_t i = 0; i < 6; ++i) {
-        indices.push_back(baseIndexInnerGreenBot + i);
-        indices.push_back(centerIndexBot);
-        indices.push_back(baseIndexInnerGreenBot + ((i + 1) % 6));
-      }
-
-      const auto baseIndexInnerBlackBot = static_cast<uint16_t>(vertices.size());
-      offsetNVertSurface(vertices.end() - 1, vertices, 0.0f, blackColor, 6);
-
-      const auto baseIndexOuterBot = static_cast<uint16_t>(vertices.size());
-      offsetNVertSurface(vertices.end(), vertices, 0.11f, blackColor, 6);
-
-      for (uint16_t i = 0; i < 6; ++i) {
-        indices.push_back(baseIndexOuterBot + i);
-        indices.push_back(baseIndexInnerBlackBot + i);
-        indices.push_back(baseIndexOuterBot + ((i + 1) % 6));
-
-        indices.push_back(baseIndexOuterBot + ((i + 1) % 6));
-        indices.push_back(baseIndexInnerBlackBot + i);
-        indices.push_back(baseIndexInnerBlackBot + ((i + 1) % 6));
-      }
-
-      if (includeSides) {
-        for (uint16_t i = 0; i < 6; ++i) {
-          uint16_t topOuterCurr = baseIndexOuter + i;
-          uint16_t topOuterNext = baseIndexOuter + ((i + 1) % 6);
-          uint16_t bottomOuterCurr = baseIndexOuterBot + i;
-          uint16_t bottomOuterNext = baseIndexOuterBot + ((i + 1) % 6);
-
-          Vertex v0 = vertices[topOuterCurr];
-          v0.color = blackColor;
-          Vertex v1 = vertices[bottomOuterCurr];
-          v1.color = blackColor;
-          Vertex v2 = vertices[bottomOuterNext];
-          v2.color = blackColor;
-          Vertex v3 = vertices[topOuterNext];
-          v3.color = blackColor;
-
-          std::vector<Vertex> originalSquare{v0, v1, v2, v3};
-
-          uint16_t idx_v0 = static_cast<uint16_t>(vertices.size());
-          vertices.push_back(v0);
-          uint16_t idx_v1 = static_cast<uint16_t>(vertices.size());
-          vertices.push_back(v1);
-          uint16_t idx_v2 = static_cast<uint16_t>(vertices.size());
-          vertices.push_back(v2);
-          uint16_t idx_v3 = static_cast<uint16_t>(vertices.size());
-          vertices.push_back(v3);
-
-          std::vector<Vertex> offsetVerticesBlack;
-          Vertex centerVertex;
-          float offsetInwards = 0.1f;
-
-          offsetNVertSurfaceWithCenter(originalSquare, offsetVerticesBlack, offsetInwards, blackColor, centerVertex);
-
-          uint16_t idx_offset_v0 = static_cast<uint16_t>(vertices.size());
-          vertices.push_back(offsetVerticesBlack[0]);
-          uint16_t idx_offset_v1 = static_cast<uint16_t>(vertices.size());
-          vertices.push_back(offsetVerticesBlack[1]);
-          uint16_t idx_offset_v2 = static_cast<uint16_t>(vertices.size());
-          vertices.push_back(offsetVerticesBlack[2]);
-          uint16_t idx_offset_v3 = static_cast<uint16_t>(vertices.size());
-          vertices.push_back(offsetVerticesBlack[3]);
-
-          std::vector<Vertex> offsetVerticesBrown = offsetVerticesBlack;
-          for (auto &v : offsetVerticesBrown) {
-            v.color = brownColor;
-          }
-
-          uint16_t idx_brown_v0 = static_cast<uint16_t>(vertices.size());
-          vertices.push_back(offsetVerticesBrown[0]);
-          uint16_t idx_brown_v1 = static_cast<uint16_t>(vertices.size());
-          vertices.push_back(offsetVerticesBrown[1]);
-          uint16_t idx_brown_v2 = static_cast<uint16_t>(vertices.size());
-          vertices.push_back(offsetVerticesBrown[2]);
-          uint16_t idx_brown_v3 = static_cast<uint16_t>(vertices.size());
-          vertices.push_back(offsetVerticesBrown[3]);
-
-          centerVertex.color = brownColor;
-          uint16_t idx_center = static_cast<uint16_t>(vertices.size());
-          vertices.push_back(centerVertex);
-
-          indices.push_back(idx_v0);
-          indices.push_back(idx_v1);
-          indices.push_back(idx_offset_v1);
-
-          indices.push_back(idx_v0);
-          indices.push_back(idx_offset_v1);
-          indices.push_back(idx_offset_v0);
-
-          indices.push_back(idx_v1);
-          indices.push_back(idx_v2);
-          indices.push_back(idx_offset_v2);
-
-          indices.push_back(idx_v1);
-          indices.push_back(idx_offset_v2);
-          indices.push_back(idx_offset_v1);
-
-          indices.push_back(idx_v2);
-          indices.push_back(idx_v3);
-          indices.push_back(idx_offset_v3);
-
-          indices.push_back(idx_v2);
-          indices.push_back(idx_offset_v3);
-          indices.push_back(idx_offset_v2);
-
-          indices.push_back(idx_v3);
-          indices.push_back(idx_v0);
-          indices.push_back(idx_offset_v0);
-
-          indices.push_back(idx_v3);
-          indices.push_back(idx_offset_v0);
-          indices.push_back(idx_offset_v3);
-
-          indices.push_back(idx_brown_v0);
-          indices.push_back(idx_brown_v1);
-          indices.push_back(idx_center);
-
-          indices.push_back(idx_brown_v1);
-          indices.push_back(idx_brown_v2);
-          indices.push_back(idx_center);
-
-          indices.push_back(idx_brown_v2);
-          indices.push_back(idx_brown_v3);
-          indices.push_back(idx_center);
-
-          indices.push_back(idx_brown_v3);
-          indices.push_back(idx_brown_v0);
-          indices.push_back(idx_center);
-        }
-      }
-    }
-
-    static void offsetNVertSurfaceWithCenter(
-      const std::vector<Vertex> &surfaceVerts,
-      std::vector<Vertex> &newVertices,
-      const float offset,
-      const glm::vec3 &color,
-      Vertex &centerVertex) {
-      glm::vec3 center{0.0f};
-      for (const auto &v : surfaceVerts) {
-        center += v.pos;
-      }
-      center /= surfaceVerts.size();
-
-      for (const auto &v : surfaceVerts) {
-        glm::vec3 dir = glm::normalize(center - v.pos);
-        Vertex vert = v;
-        vert.pos += dir * offset;
-        vert.color = color;
-        newVertices.push_back(vert);
-      }
-
-      centerVertex = {center, color};
-    }
-
-    static void offsetNVertSurface(const std::vector<Vertex> &surfaceVerts,
-                                   std::vector<Vertex> &verticesBuffer,
-                                   const float offset,
-                                   const glm::vec3 &color) {
-      glm::vec3 center{0.0f};
-      for (const auto &v : surfaceVerts) {
-        center += v.pos;
-      }
-      center /= surfaceVerts.size();
-
-      for (auto v : surfaceVerts) {
-        glm::vec3 dir = glm::normalize(v.pos - center);
-        v.pos += dir * offset;
-        v.color = color;
-
-        verticesBuffer.push_back(v);
-      }
-    }
-
-    static void offsetNVertSurface(
-      const std::vector<Vertex>::iterator &endIt,
-      std::vector<Vertex> &verticesBuffer,
-      const float offset,
-      const glm::vec3 &color,
-      int n) {
-      glm::vec3 center{0.0f};
-      auto startIt = endIt - n;
-
-      for (auto it = startIt; it != endIt; ++it) {
-        center += it->pos;
-      }
-      center /= static_cast<float>(n);
-
-      std::vector<Vertex> newVertices;
-
-      for (auto it = startIt; it != endIt; ++it) {
-        glm::vec3 dir = glm::normalize(it->pos - center);
-        Vertex vert = {it->pos, it->color};
-        vert.pos += dir * offset;
-        vert.color = color;
-
-        newVertices.push_back(vert);
-      }
-
-      verticesBuffer.insert(verticesBuffer.end(), newVertices.begin(), newVertices.end());
-    }
-
-    void generateNSidedShapeWithCenterVertices(int n,
-                                               float radius,
-                                               float rotationAngle,
-                                               float height,
-                                               glm::vec3 color,
-                                               std::vector<Vertex> &vertexVec) {
-      float angleIncrement = glm::radians(360.0f / static_cast<float>(n));
-      for (int i = 0; i < n; ++i) {
-        float angle = i * angleIncrement + rotationAngle;
-
-        float x = radius * cos(angle);
-        float y = radius * sin(angle);
-        float z = height;
-        vertexVec.push_back({{x, y, z}, color});
-      }
-      vertexVec.push_back({{0.0f, 0.0f, height}, color});
-    }
-    void generateNSidedShapeVertices(int n,
-                                     float radius,
-                                     float rotationAngle,
-                                     float height,
-                                     glm::vec3 color,
-                                     std::vector<Vertex> &vertexVec) {
-      float angleIncrement = glm::radians(360.0f / static_cast<float>(n));
-      for (int i = 0; i < n; ++i) {
-        float angle = i * angleIncrement + rotationAngle;
-
-        float x = radius * cos(angle);
-        float y = radius * sin(angle);
-        float z = height;
-        vertexVec.push_back({{x, y, z}, color});
-      }
-    }
-
-    void createVertexBuffer(const std::vector<Vertex> &vertices,
-                            VkBuffer &vertexBuffer,
-                            VkDeviceMemory &vertexBufferMemory) {
-      VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
-
-      VkBufferCreateInfo bufferInfo{};
-      bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-      bufferInfo.size = bufferSize;
-      bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-      bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-      if (vkCreateBuffer(vulkanDevice->getDevice(), &bufferInfo, nullptr, &vertexBuffer) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create vertex buffer!");
-      }
-
-      VkMemoryRequirements memRequirements;
-      vkGetBufferMemoryRequirements(vulkanDevice->getDevice(), vertexBuffer, &memRequirements);
-
-      VkMemoryAllocateInfo allocInfo{};
-      allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-      allocInfo.allocationSize = memRequirements.size;
-      allocInfo.memoryTypeIndex =
-        vulkanDevice->findMemoryType(memRequirements.memoryTypeBits,
-                                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-      if (vkAllocateMemory(vulkanDevice->getDevice(), &allocInfo, nullptr, &vertexBufferMemory) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate vertex buffer memory!");
-      }
-
-      vkBindBufferMemory(vulkanDevice->getDevice(), vertexBuffer, vertexBufferMemory, 0);
-
-      void *data;
-      vkMapMemory(vulkanDevice->getDevice(), vertexBufferMemory, 0, bufferSize, 0, &data);
-      memcpy(data, vertices.data(), (size_t) bufferSize);
-      vkUnmapMemory(vulkanDevice->getDevice(), vertexBufferMemory);
-    }
-
-    void createIndexBuffer(const std::vector<uint16_t> &indices,
-                           VkBuffer &indexBuffer,
-                           VkDeviceMemory &indexBufferMemory) {
-      VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
-
-      VkBufferCreateInfo bufferInfo{};
-      bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-      bufferInfo.size = bufferSize;
-      bufferInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-      bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-      if (vkCreateBuffer(vulkanDevice->getDevice(), &bufferInfo, nullptr, &indexBuffer) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create index buffer!");
-      }
-
-      VkMemoryRequirements memRequirements;
-      vkGetBufferMemoryRequirements(vulkanDevice->getDevice(), indexBuffer, &memRequirements);
-
-      VkMemoryAllocateInfo allocInfo{};
-      allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-      allocInfo.allocationSize = memRequirements.size;
-      allocInfo.memoryTypeIndex =
-        vulkanDevice->findMemoryType(memRequirements.memoryTypeBits,
-                                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-      if (vkAllocateMemory(vulkanDevice->getDevice(), &allocInfo, nullptr, &indexBufferMemory) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate index buffer memory!");
-      }
-
-      vkBindBufferMemory(vulkanDevice->getDevice(), indexBuffer, indexBufferMemory, 0);
-
-      void *data;
-      vkMapMemory(vulkanDevice->getDevice(), indexBufferMemory, 0, bufferSize, 0, &data);
-      memcpy(data, indices.data(), (size_t) bufferSize);
-      vkUnmapMemory(vulkanDevice->getDevice(), indexBufferMemory);
-    }
     void prepareInstanceData() {
-      for (int y = 0; y < GRID_HEIGHT; ++y) {
-        for (int x = 0; x < GRID_WIDTH; ++x) {
+      // Define a grid layout for instances of the model
+      const int GRID_SIZE = 3; // 3x3 grid
+      const float SPACING = 3.0f; // Space between instances
+
+      for (int z = 0; z < GRID_SIZE; z++) {
+        for (int x = 0; x < GRID_SIZE; x++) {
           InstanceData inst{};
-          inst.offset = calculatePositionOffset(x, y);
-          if (isEdgeHexagon(x, y)) {
-            edgeInstanceData.push_back(inst);
-          } else {
-            internalInstanceData.push_back(inst);
-          }
+
+          // Calculate offset in grid
+          float xOffset = (x - (GRID_SIZE - 1) / 2.0f) * SPACING;
+          float zOffset = (z - (GRID_SIZE - 1) / 2.0f) * SPACING;
+
+          inst.offset = glm::vec2(xOffset, zOffset);
+          instanceData.push_back(inst);
         }
       }
 
-      createInstanceBuffer(edgeInstanceData, edgeInstanceBuffer, edgeInstanceBufferMemory);
-      createInstanceBuffer(internalInstanceData, internalInstanceBuffer, internalInstanceBufferMemory);
+      createInstanceBuffer(instanceData, instanceBuffer, instanceBufferMemory);
     }
-
-    static constexpr int GRID_WIDTH = 10;
-    static constexpr int GRID_HEIGHT = 10;
 };

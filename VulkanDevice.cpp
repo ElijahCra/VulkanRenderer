@@ -65,11 +65,13 @@ class VulkanDevice {
       return details;
     }
 
-    void createBuffer(VkDeviceSize size,
-                      VkBufferUsageFlags usage,
-                      VkMemoryPropertyFlags properties,
-                      VkBuffer &buffer,
-                      VkDeviceMemory &bufferMemory) {
+  void createBuffer(
+  VkDeviceSize size,
+  VkBufferUsageFlags usage,
+  VkMemoryPropertyFlags properties,
+  VkBuffer& buffer,
+  VkDeviceMemory& bufferMemory) {
+
       VkBufferCreateInfo bufferInfo{};
       bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
       bufferInfo.size = size;
@@ -93,6 +95,48 @@ class VulkanDevice {
       }
 
       vkBindBufferMemory(device, buffer, bufferMemory, 0);
+    }
+
+  void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) {
+      // Create a temporary command buffer for the transfer operation
+      VkCommandBufferAllocateInfo allocInfo{};
+      allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+      allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+      allocInfo.commandPool = transferCommandPool;
+      allocInfo.commandBufferCount = 1;
+
+      VkCommandBuffer commandBuffer;
+      vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
+
+      // Begin recording the command buffer
+      VkCommandBufferBeginInfo beginInfo{};
+      beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+      beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+      vkBeginCommandBuffer(commandBuffer, &beginInfo);
+
+      // Record the copy command
+      VkBufferCopy copyRegion{};
+      copyRegion.srcOffset = 0; // Optional
+      copyRegion.dstOffset = 0; // Optional
+      copyRegion.size = size;
+      vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
+
+      // End recording
+      vkEndCommandBuffer(commandBuffer);
+
+      // Submit the command buffer to the queue
+      VkSubmitInfo submitInfo{};
+      submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+      submitInfo.commandBufferCount = 1;
+      submitInfo.pCommandBuffers = &commandBuffer;
+
+      // Submit to the graphics queue and wait for it to complete
+      vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+      vkQueueWaitIdle(graphicsQueue);
+
+      // Clean up the command buffer
+      vkFreeCommandBuffers(device, transferCommandPool, 1, &commandBuffer);
     }
 
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) {
@@ -142,12 +186,17 @@ class VulkanDevice {
       : instance(instance), surface(surface) {
       pickPhysicalDevice();
       createLogicalDevice();
+      createTransferCommandPool(); // Added this call to initialize the transfer command pool
     }
 
     ~VulkanDevice() {
       if (device != VK_NULL_HANDLE) {
         vkDestroyDevice(device, nullptr);
       }
+      if (transferCommandPool != VK_NULL_HANDLE) {
+        vkDestroyCommandPool(device, transferCommandPool, nullptr);
+      }
+
     }
 
     static bool checkDeviceExtensionSupport(VkPhysicalDevice device) {
@@ -185,6 +234,8 @@ class VulkanDevice {
     QueueFamilyIndices indices;
 
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+
+    VkCommandPool transferCommandPool = VK_NULL_HANDLE;
 
     void pickPhysicalDevice() {
       uint32_t deviceCount = 0;
@@ -284,5 +335,16 @@ class VulkanDevice {
       if (counts & VK_SAMPLE_COUNT_2_BIT) { return VK_SAMPLE_COUNT_2_BIT; }
 
       return VK_SAMPLE_COUNT_1_BIT;
+    }
+
+  void createTransferCommandPool() {
+      VkCommandPoolCreateInfo poolInfo{};
+      poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+      poolInfo.queueFamilyIndex = indices.graphicsFamily.value();
+      poolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+
+      if (vkCreateCommandPool(device, &poolInfo, nullptr, &transferCommandPool) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create transfer command pool!");
+      }
     }
 };
