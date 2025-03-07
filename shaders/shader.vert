@@ -1,6 +1,5 @@
 #version 450
 
-// Only include position and color inputs - no Location 2
 layout(location = 0) in vec3 inPos;
 layout(location = 1) in vec3 inColor;
 
@@ -23,12 +22,14 @@ void main() {
     gl_Position = ubo.proj * ubo.view * ubo.model * vec4(pos, 1.0);
 
     // Calculate color based on height (y-coordinate)
-    float height = pos.y;
+    // Assume terrain might range from -1.0 to 1.0 in height after scaling
+    float height = pos.z*0.05f;
 
-    // Adjust these min/max values based on your terrain's actual height range
+    // Clamp height to a reasonable range
     float heightNormalized = clamp(map(height, -0.1, 0.1, 0.0, 1.0), 0.0, 1.0);
 
-    // Create a color gradient based on elevation
+    // Create a color gradient based on elevation:
+    // Deep blue (water/low) -> green (medium) -> brown -> white (high peaks)
     vec3 color;
     if (heightNormalized < 0.3) {
         // Deep blue to light blue (water)
