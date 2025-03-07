@@ -98,6 +98,11 @@ class VulkanDevice {
     }
 
   void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) {
+      // Check if we need to create the transfer command pool
+      if (transferCommandPool == VK_NULL_HANDLE) {
+        createTransferCommandPool();
+      }
+
       // Create a temporary command buffer for the transfer operation
       VkCommandBufferAllocateInfo allocInfo{};
       allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -117,8 +122,8 @@ class VulkanDevice {
 
       // Record the copy command
       VkBufferCopy copyRegion{};
-      copyRegion.srcOffset = 0; // Optional
-      copyRegion.dstOffset = 0; // Optional
+      copyRegion.srcOffset = 0;
+      copyRegion.dstOffset = 0;
       copyRegion.size = size;
       vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
 
@@ -182,21 +187,24 @@ class VulkanDevice {
 
       throw std::runtime_error("failed to find suitable memory type!");
     }
-    VulkanDevice(VkInstance instance, VkSurfaceKHR surface)
-      : instance(instance), surface(surface) {
+  VulkanDevice(VkInstance instance, VkSurfaceKHR surface)
+      : instance(instance), surface(surface), transferCommandPool(VK_NULL_HANDLE) {
       pickPhysicalDevice();
       createLogicalDevice();
-      createTransferCommandPool(); // Added this call to initialize the transfer command pool
+      createTransferCommandPool();
     }
 
-    ~VulkanDevice() {
-      if (device != VK_NULL_HANDLE) {
-        vkDestroyDevice(device, nullptr);
-      }
+  // Update destructor to ensure proper cleanup
+  ~VulkanDevice() {
       if (transferCommandPool != VK_NULL_HANDLE) {
         vkDestroyCommandPool(device, transferCommandPool, nullptr);
+        transferCommandPool = VK_NULL_HANDLE;
       }
 
+      if (device != VK_NULL_HANDLE) {
+        vkDestroyDevice(device, nullptr);
+        device = VK_NULL_HANDLE;
+      }
     }
 
     static bool checkDeviceExtensionSupport(VkPhysicalDevice device) {
@@ -338,6 +346,12 @@ class VulkanDevice {
     }
 
   void createTransferCommandPool() {
+      // Make sure we don't create it twice
+      if (transferCommandPool != VK_NULL_HANDLE) {
+        vkDestroyCommandPool(device, transferCommandPool, nullptr);
+        transferCommandPool = VK_NULL_HANDLE;
+      }
+
       VkCommandPoolCreateInfo poolInfo{};
       poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
       poolInfo.queueFamilyIndex = indices.graphicsFamily.value();

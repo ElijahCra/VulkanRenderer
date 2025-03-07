@@ -77,9 +77,6 @@ class VulkanRenderer {
       createVertexBuffer(vertices, vertexBuffer, vertexBufferMemory);
       createIndexBuffer(indices, indexBuffer, indexBufferMemory);
 
-      // We're intentionally NOT calling prepareInstanceData() here
-      // Instead, we'll set instanceBuffer to NULL and handle it in recordCommandBuffer
-
       vulkanSync = std::make_unique<VulkanSync>(
         vulkanDevice,
         MAX_FRAMES_IN_FLIGHT
@@ -97,10 +94,6 @@ void cleanup() {
 
   vkDestroyBuffer(vkDev, indexBuffer, nullptr);
   vkFreeMemory(vkDev, indexBufferMemory, nullptr);
-
-  // We're not creating the instance buffer, so we don't need to clean it up
-  // If this causes issues, ensure instanceBuffer is initially set to VK_NULL_HANDLE
-  // and only destroy if it's not null
 
   vulkanSync.reset();
   vulkanCommands.reset();
@@ -164,47 +157,13 @@ void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, uin
 
   VkDeviceSize offsets[] = {0};
 
-  // Only bind the vertex buffer
+  // Only bind the vertex buffer, no instance buffer
   vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexBuffer, offsets);
-
-  // Bind a dummy buffer for instance data (needed by our pipeline)
-  // This is necessary because our pipeline still expects this binding
-  static VkBuffer dummyBuffer = VK_NULL_HANDLE;
-  if (dummyBuffer == VK_NULL_HANDLE) {
-    // Create a minimal dummy buffer if needed
-    VkBufferCreateInfo bufferInfo{};
-    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.size = sizeof(InstanceData); // Just one instance
-    bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    VkBuffer tempBuffer;
-    VkDeviceMemory tempMemory;
-    vulkanDevice->createBuffer(
-      bufferInfo.size,
-      bufferInfo.usage,
-      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-      tempBuffer,
-      tempMemory
-    );
-
-    // Initialize with a zero offset
-    void* data;
-    vkMapMemory(vulkanDevice->getDevice(), tempMemory, 0, bufferInfo.size, 0, &data);
-    InstanceData inst{};
-    inst.offset = glm::vec2(0.0f, 0.0f);
-    memcpy(data, &inst, sizeof(InstanceData));
-    vkUnmapMemory(vulkanDevice->getDevice(), tempMemory);
-
-    dummyBuffer = tempBuffer;
-  }
-
-  vkCmdBindVertexBuffers(commandBuffer, 1, 1, &dummyBuffer, offsets);
 
   // Bind index buffer
   vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
 
-  // Draw with exactly 1 instance
+  // Draw without instancing
   vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
   vkCmdEndRenderPass(commandBuffer);
@@ -340,11 +299,6 @@ void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, uin
     VkBuffer indexBuffer = VK_NULL_HANDLE;
     VkDeviceMemory indexBufferMemory = VK_NULL_HANDLE;
 
-    // Instance data
-    std::vector<InstanceData> instanceData;
-    VkBuffer instanceBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory instanceBufferMemory = VK_NULL_HANDLE;
-
     void loadModel(const std::string& modelPath) {
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
@@ -472,42 +426,5 @@ void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, uin
 
       vkDestroyBuffer(vulkanDevice->getDevice(), stagingBuffer, nullptr);
       vkFreeMemory(vulkanDevice->getDevice(), stagingBufferMemory, nullptr);
-    }
-
-    void createInstanceBuffer(const std::vector<InstanceData>& instanceData,
-                              VkBuffer& buffer,
-                              VkDeviceMemory& bufferMemory) {
-      VkDeviceSize bufferSize = sizeof(InstanceData) * instanceData.size();
-      vulkanDevice->createBuffer(bufferSize,
-                                 VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                                 buffer,
-                                 bufferMemory);
-
-      void* data;
-      vkMapMemory(vulkanDevice->getDevice(), bufferMemory, 0, bufferSize, 0, &data);
-      memcpy(data, instanceData.data(), (size_t)bufferSize);
-      vkUnmapMemory(vulkanDevice->getDevice(), bufferMemory);
-    }
-
-    void prepareInstanceData() {
-      // Define a grid layout for instances of the model
-      const int GRID_SIZE = 3; // 3x3 grid
-      const float SPACING = 3.0f; // Space between instances
-
-      for (int z = 0; z < GRID_SIZE; z++) {
-        for (int x = 0; x < GRID_SIZE; x++) {
-          InstanceData inst{};
-
-          // Calculate offset in grid
-          float xOffset = (x - (GRID_SIZE - 1) / 2.0f) * SPACING;
-          float zOffset = (z - (GRID_SIZE - 1) / 2.0f) * SPACING;
-
-          inst.offset = glm::vec2(xOffset, zOffset);
-          instanceData.push_back(inst);
-        }
-      }
-
-      createInstanceBuffer(instanceData, instanceBuffer, instanceBufferMemory);
     }
 };

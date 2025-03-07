@@ -5,6 +5,7 @@
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
+// We'll keep this struct but won't use it
 struct InstanceData {
   glm::vec2 offset;
 };
@@ -30,18 +31,9 @@ struct Vertex {
     return bindingDescription;
   }
 
-  // In Vertex struct
-  static VkVertexInputBindingDescription getInstanceBindingDescription() {
-    VkVertexInputBindingDescription bindingDescription{};
-    bindingDescription.binding = 1; // Binding 1 for instance data
-    bindingDescription.stride = sizeof(InstanceData);
-    bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
-    return bindingDescription;
-  }
-
-
-  static std::array<VkVertexInputAttributeDescription, 3> getAttributeDescriptions() {
-    std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions{};
+  // Modified to only include vertex attributes, no instance attributes
+  static std::array<VkVertexInputAttributeDescription, 2> getAttributeDescriptions() {
+    std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions{};
 
     // Position attribute
     attributeDescriptions[0].binding = 0;
@@ -55,15 +47,8 @@ struct Vertex {
     attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
     attributeDescriptions[1].offset = offsetof(Vertex, color);
 
-    // Instance offset attribute
-    attributeDescriptions[2].binding = 1;
-    attributeDescriptions[2].location = 2;
-    attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
-    attributeDescriptions[2].offset = offsetof(InstanceData, offset);
-
     return attributeDescriptions;
   }
-
 };
 
 namespace std {

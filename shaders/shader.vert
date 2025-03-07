@@ -1,8 +1,8 @@
 #version 450
 
+// Only include position and color inputs - no Location 2
 layout(location = 0) in vec3 inPos;
 layout(location = 1) in vec3 inColor;
-// We're keeping location 2 defined but it will be zeros
 
 layout(location = 0) out vec3 fragColor;
 
@@ -20,7 +20,6 @@ float map(float value, float inMin, float inMax, float outMin, float outMax) {
 void main() {
     vec3 pos = inPos * 0.1; // Scale the model down
 
-    // No need to add instance offset
     gl_Position = ubo.proj * ubo.view * ubo.model * vec4(pos, 1.0);
 
     // Calculate color based on height (y-coordinate)
