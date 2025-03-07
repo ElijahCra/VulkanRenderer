@@ -28,7 +28,7 @@ class VulkanRenderer {
     ~VulkanRenderer() {
     }
 
-    void init(std::shared_ptr<VulkanWindow> window, uint32_t width, uint32_t height) {
+  void init(std::shared_ptr<VulkanWindow> window, uint32_t width, uint32_t height) {
       vulkanWindow = window;
       vulkanInstance = std::make_unique<VulkanInstance>(window->getGLFWwindow());
 
@@ -72,13 +72,13 @@ class VulkanRenderer {
         MAX_FRAMES_IN_FLIGHT
       );
 
-      // Load the STL model instead of generating hexagon data
+      // Load the STL model
       loadModel("../models/terrain.obj");
       createVertexBuffer(vertices, vertexBuffer, vertexBufferMemory);
       createIndexBuffer(indices, indexBuffer, indexBufferMemory);
 
-      // Create instance data if you want to render multiple instances of the model
-      prepareInstanceData();
+      // We're intentionally NOT calling prepareInstanceData() here
+      // Instead, we'll set instanceBuffer to NULL and handle it in recordCommandBuffer
 
       vulkanSync = std::make_unique<VulkanSync>(
         vulkanDevice,
@@ -89,28 +89,130 @@ class VulkanRenderer {
       this->height = height;
     }
 
-    void cleanup() {
-      auto vkDev = vulkanDevice->getDevice();
+void cleanup() {
+  auto vkDev = vulkanDevice->getDevice();
 
-      vkDestroyBuffer(vkDev, vertexBuffer, nullptr);
-      vkFreeMemory(vkDev, vertexBufferMemory, nullptr);
+  vkDestroyBuffer(vkDev, vertexBuffer, nullptr);
+  vkFreeMemory(vkDev, vertexBufferMemory, nullptr);
 
-      vkDestroyBuffer(vkDev, indexBuffer, nullptr);
-      vkFreeMemory(vkDev, indexBufferMemory, nullptr);
+  vkDestroyBuffer(vkDev, indexBuffer, nullptr);
+  vkFreeMemory(vkDev, indexBufferMemory, nullptr);
 
-      vkDestroyBuffer(vkDev, instanceBuffer, nullptr);
-      vkFreeMemory(vkDev, instanceBufferMemory, nullptr);
+  // We're not creating the instance buffer, so we don't need to clean it up
+  // If this causes issues, ensure instanceBuffer is initially set to VK_NULL_HANDLE
+  // and only destroy if it's not null
 
-      vulkanSync.reset();
-      vulkanCommands.reset();
-      vulkanPipeline.reset();
-      vulkanDescriptors.reset();
-      vulkanRenderPass.reset();
-      vulkanSwapChain.reset();
+  vulkanSync.reset();
+  vulkanCommands.reset();
+  vulkanPipeline.reset();
+  vulkanDescriptors.reset();
+  vulkanRenderPass.reset();
+  vulkanSwapChain.reset();
 
-      vulkanDevice.reset();
-      vulkanInstance.reset();
-    }
+  vulkanDevice.reset();
+  vulkanInstance.reset();
+}
+
+void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, uint32_t currentFrame) {
+  VkCommandBufferBeginInfo beginInfo{};
+  beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+  if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
+    throw std::runtime_error("failed to begin recording command buffer!");
+  }
+
+  VkRenderPassBeginInfo renderPassInfo{};
+  renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+  renderPassInfo.renderPass = vulkanRenderPass->getHandle();
+  renderPassInfo.framebuffer = vulkanSwapChain->getFramebuffers()[imageIndex];
+  renderPassInfo.renderArea.offset = {0, 0};
+  renderPassInfo.renderArea.extent = vulkanSwapChain->getExtent();
+
+  std::array<VkClearValue, 2> clearValues{};
+  clearValues[0].color = {{0.1f, 0.1f, 0.1f, 1.0f}};
+  clearValues[1].depthStencil = {1.0f, 0};
+
+  renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+  renderPassInfo.pClearValues = clearValues.data();
+
+  vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+  vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vulkanPipeline->getPipeline());
+
+  vkCmdBindDescriptorSets(commandBuffer,
+                          VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          vulkanPipeline->getLayout(),
+                          0,
+                          1,
+                          &vulkanDescriptors->getDescriptorSets()[currentFrame],
+                          0,
+                          nullptr);
+
+  VkViewport viewport{};
+  viewport.x = 0.0f;
+  viewport.y = 0.0f;
+  viewport.width = (float) vulkanSwapChain->getExtent().width;
+  viewport.height = (float) vulkanSwapChain->getExtent().height;
+  viewport.minDepth = 0.0f;
+  viewport.maxDepth = 1.0f;
+  vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+  VkRect2D scissor{};
+  scissor.offset = {0, 0};
+  scissor.extent = vulkanSwapChain->getExtent();
+  vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+  VkDeviceSize offsets[] = {0};
+
+  // Only bind the vertex buffer
+  vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexBuffer, offsets);
+
+  // Bind a dummy buffer for instance data (needed by our pipeline)
+  // This is necessary because our pipeline still expects this binding
+  static VkBuffer dummyBuffer = VK_NULL_HANDLE;
+  if (dummyBuffer == VK_NULL_HANDLE) {
+    // Create a minimal dummy buffer if needed
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = sizeof(InstanceData); // Just one instance
+    bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VkBuffer tempBuffer;
+    VkDeviceMemory tempMemory;
+    vulkanDevice->createBuffer(
+      bufferInfo.size,
+      bufferInfo.usage,
+      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+      tempBuffer,
+      tempMemory
+    );
+
+    // Initialize with a zero offset
+    void* data;
+    vkMapMemory(vulkanDevice->getDevice(), tempMemory, 0, bufferInfo.size, 0, &data);
+    InstanceData inst{};
+    inst.offset = glm::vec2(0.0f, 0.0f);
+    memcpy(data, &inst, sizeof(InstanceData));
+    vkUnmapMemory(vulkanDevice->getDevice(), tempMemory);
+
+    dummyBuffer = tempBuffer;
+  }
+
+  vkCmdBindVertexBuffers(commandBuffer, 1, 1, &dummyBuffer, offsets);
+
+  // Bind index buffer
+  vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+
+  // Draw with exactly 1 instance
+  vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+
+  vkCmdEndRenderPass(commandBuffer);
+
+  if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
+    throw std::runtime_error("failed to record command buffer!");
+  }
+}
 
     void drawFrame() {
       vkWaitForFences(vulkanDevice->getDevice(), 1, vulkanSync->getInFlightFence(currentFrame), VK_TRUE, UINT64_MAX);
@@ -242,79 +344,6 @@ class VulkanRenderer {
     std::vector<InstanceData> instanceData;
     VkBuffer instanceBuffer = VK_NULL_HANDLE;
     VkDeviceMemory instanceBufferMemory = VK_NULL_HANDLE;
-
-    void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, uint32_t currentFrame) {
-      VkCommandBufferBeginInfo beginInfo{};
-      beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-
-      if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
-        throw std::runtime_error("failed to begin recording command buffer!");
-      }
-
-      VkRenderPassBeginInfo renderPassInfo{};
-      renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-      renderPassInfo.renderPass = vulkanRenderPass->getHandle();
-      renderPassInfo.framebuffer = vulkanSwapChain->getFramebuffers()[imageIndex];
-      renderPassInfo.renderArea.offset = {0, 0};
-      renderPassInfo.renderArea.extent = vulkanSwapChain->getExtent();
-
-      std::array<VkClearValue, 2> clearValues{};
-      clearValues[0].color = {{0.1f, 0.1f, 0.1f, 1.0f}};
-      clearValues[1].depthStencil = {1.0f, 0};
-
-      renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
-      renderPassInfo.pClearValues = clearValues.data();
-
-      vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-      vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vulkanPipeline->getPipeline());
-
-      vkCmdBindDescriptorSets(commandBuffer,
-                              VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              vulkanPipeline->getLayout(),
-                              0,
-                              1,
-                              &vulkanDescriptors->getDescriptorSets()[currentFrame],
-                              0,
-                              nullptr);
-
-      VkViewport viewport{};
-      viewport.x = 0.0f;
-      viewport.y = 0.0f;
-      viewport.width = (float) vulkanSwapChain->getExtent().width;
-      viewport.height = (float) vulkanSwapChain->getExtent().height;
-      viewport.minDepth = 0.0f;
-      viewport.maxDepth = 1.0f;
-      vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-
-      VkRect2D scissor{};
-      scissor.offset = {0, 0};
-      scissor.extent = vulkanSwapChain->getExtent();
-      vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-
-      VkDeviceSize offsets[] = {0};
-
-      // Bind vertex and instance buffers
-      vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexBuffer, offsets);
-      vkCmdBindVertexBuffers(commandBuffer, 1, 1, &instanceBuffer, offsets);
-
-      // Bind index buffer
-      vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
-
-      // Draw the model with instancing
-      vkCmdDrawIndexed(commandBuffer,
-                       static_cast<uint32_t>(indices.size()),
-                       static_cast<uint32_t>(instanceData.size()),
-                       0,
-                       0,
-                       0);
-
-      vkCmdEndRenderPass(commandBuffer);
-
-      if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
-        throw std::runtime_error("failed to record command buffer!");
-      }
-    }
 
     void loadModel(const std::string& modelPath) {
     tinyobj::attrib_t attrib;

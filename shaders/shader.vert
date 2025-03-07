@@ -2,7 +2,7 @@
 
 layout(location = 0) in vec3 inPos;
 layout(location = 1) in vec3 inColor;
-// We'll keep location 2 defined in the pipeline but not use it
+// We're keeping location 2 defined but it will be zeros
 
 layout(location = 0) out vec3 fragColor;
 
@@ -20,17 +20,16 @@ float map(float value, float inMin, float inMax, float outMin, float outMax) {
 void main() {
     vec3 pos = inPos * 0.1; // Scale the model down
 
+    // No need to add instance offset
     gl_Position = ubo.proj * ubo.view * ubo.model * vec4(pos, 1.0);
 
     // Calculate color based on height (y-coordinate)
-    // Assume terrain might range from -1.0 to 1.0 in height after scaling
-    float height = pos.z*0.05f;
+    float height = pos.y;
 
-    // Clamp height to a reasonable range
+    // Adjust these min/max values based on your terrain's actual height range
     float heightNormalized = clamp(map(height, -0.1, 0.1, 0.0, 1.0), 0.0, 1.0);
 
-    // Create a color gradient based on elevation:
-    // Deep blue (water/low) -> green (medium) -> brown -> white (high peaks)
+    // Create a color gradient based on elevation
     vec3 color;
     if (heightNormalized < 0.3) {
         // Deep blue to light blue (water)
