@@ -45,36 +45,20 @@ class VulkanDescriptors {
     VkDescriptorSetLayout getDescriptorSetLayout() const { return descriptorSetLayout; }
     const std::vector<VkDescriptorSet> &getDescriptorSets() const { return descriptorSets; }
 
+    // Original updateUniformBuffer method - retained for backward compatibility
     void updateUniformBuffer(size_t currentFrame) {
-      UniformBufferObject ubo{};
-      ubo.model = glm::mat4(1.0f); // No rotation
-
-      float theta = windowPtr->cameraAngleX; // Azimuthal angle
-      float phi = windowPtr->cameraAngleY; // Polar angle
-
+      // Default implementation uses spherical coordinates
       glm::vec3 cameraPos;
-      cameraPos.x = windowPtr->radius * sin(phi) * sin(theta);
-      cameraPos.y = windowPtr->radius * cos(phi);
-      cameraPos.z = windowPtr->radius * sin(phi) * cos(theta);
+      cameraPos.x = windowPtr->radius * sin(windowPtr->cameraAngleY) * sin(windowPtr->cameraAngleX);
+      cameraPos.y = windowPtr->radius * cos(windowPtr->cameraAngleY);
+      cameraPos.z = windowPtr->radius * sin(windowPtr->cameraAngleY) * cos(windowPtr->cameraAngleX);
 
-      ubo.view = glm::lookAt(
-        cameraPos,
-        // viewpoint
-        glm::vec3(0.0f, 0.0f, 0.0f),
-        //origin
-        glm::vec3(0.0f, 1.0f, 0.0f)); //Up vector
+      updateUniformBufferWithPosition(currentFrame, cameraPos);
+    }
 
-      ubo.proj = glm::perspective(glm::radians(windowPtr->fov),
-                                  swapChainPtr->getExtent().width / (float) swapChainPtr->getExtent().height,
-                                  0.1f,
-                                  500.0f);
-      //std::cout << "\n Camera Position: (" << cameraPos.x << ", " << cameraPos.y << ", " << cameraPos.z << ")\n";
-      //std::cout << "FOV: " << fov << "\n";
-
-      void *data;
-      vkMapMemory(devicePtr->getDevice(), uniformBuffersMemory[currentFrame], 0, sizeof(ubo), 0, &data);
-      memcpy(data, &ubo, sizeof(ubo));
-      vkUnmapMemory(devicePtr->getDevice(), uniformBuffersMemory[currentFrame]);
+    // New method that takes an explicit camera position
+    void updateUniformBuffer(size_t currentFrame, const glm::vec3& cameraPos) {
+      updateUniformBufferWithPosition(currentFrame, cameraPos);
     }
 
   private:
@@ -91,6 +75,49 @@ class VulkanDescriptors {
     std::vector<VkDeviceMemory> uniformBuffersMemory;
 
     VkDevice device() const { return devicePtr->getDevice(); }
+
+    // Internal method that handles actual uniform buffer updates
+    void updateUniformBufferWithPosition(size_t currentFrame, const glm::vec3& cameraPos) {
+      UniformBufferObject ubo{};
+      ubo.model = glm::mat4(1.0f); // No rotation
+
+      // Use the camera angles from the window, which include rotation offsets
+      float theta = windowPtr->cameraAngleX; // Azimuthal angle
+      float phi = windowPtr->cameraAngleY;   // Polar angle
+
+      // Calculate look-at point based on camera angles
+      glm::vec3 lookDirection;
+      lookDirection.x = sin(phi) * sin(theta);
+      lookDirection.y = cos(phi);
+      lookDirection.z = sin(phi) * cos(theta);
+
+      // Calculate look-at point by adding the direction vector to camera position
+      glm::vec3 lookAtPoint = cameraPos + lookDirection;
+
+      // Build the view matrix with the calculated look-at point
+      ubo.view = glm::lookAt(
+        cameraPos,     // Camera position from path
+        lookAtPoint,   // Look at point calculated from camera angles
+        glm::vec3(0.0f, 1.0f, 0.0f)   // Up vector
+      );
+
+      // Perspective projection matrix
+      ubo.proj = glm::perspective(
+        glm::radians(windowPtr->fov),
+        swapChainPtr->getExtent().width / (float)swapChainPtr->getExtent().height,
+        0.1f,    // Near plane
+        500.0f   // Far plane
+      );
+
+      // Flip Y coordinate for Vulkan coordinate system
+      ubo.proj[1][1] *= -1;
+
+      // Update the uniform buffer
+      void *data;
+      vkMapMemory(devicePtr->getDevice(), uniformBuffersMemory[currentFrame], 0, sizeof(ubo), 0, &data);
+      memcpy(data, &ubo, sizeof(ubo));
+      vkUnmapMemory(devicePtr->getDevice(), uniformBuffersMemory[currentFrame]);
+    }
 
     void createDescriptorSetLayout() {
       VkDescriptorSetLayoutBinding uboLayoutBinding{};

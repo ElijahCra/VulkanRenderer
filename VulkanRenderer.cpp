@@ -12,14 +12,18 @@
 #include "VulkanDescriptor.cpp"
 #include "VulkanCommands.cpp"
 #include "VulkanSync.cpp"
+#include "CameraPath.cpp"
+#include "FpsCounter.cpp"
 
 #include "Util.cpp"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <iostream>
 #include <stdexcept>
 #include <array>
 #include <vector>
+#include <chrono>
 #include "tiny_object_loader.h" // Add tinyobjloader include
 
 class VulkanRenderer {
@@ -28,7 +32,7 @@ class VulkanRenderer {
     ~VulkanRenderer() {
     }
 
-  void init(std::shared_ptr<VulkanWindow> window, uint32_t width, uint32_t height) {
+    void init(std::shared_ptr<VulkanWindow> window, uint32_t width, uint32_t height) {
       vulkanWindow = window;
       vulkanInstance = std::make_unique<VulkanInstance>(window->getGLFWwindow());
 
@@ -82,29 +86,44 @@ class VulkanRenderer {
         MAX_FRAMES_IN_FLIGHT
       );
 
+      // Create camera path
+      cameraPath = CameraPath::createDefaultPath();
+      startTime = std::chrono::high_resolution_clock::now();
+
+      // Initialize camera position at first point in path
+      if (!cameraPath.points.empty()) {
+        cameraPosition = cameraPath.points[0].position;
+      } else {
+        cameraPosition = glm::vec3(0.0f, 5.0f, 20.0f); // Default position if no path
+      }
+
+      // Initialize FPS counter
+      fpsCounter = std::make_unique<FPSCounter>();
+
       this->width = width;
       this->height = height;
     }
 
-void cleanup() {
-  auto vkDev = vulkanDevice->getDevice();
+    void cleanup() {
+      auto vkDev = vulkanDevice->getDevice();
 
-  vkDestroyBuffer(vkDev, vertexBuffer, nullptr);
-  vkFreeMemory(vkDev, vertexBufferMemory, nullptr);
+      vkDestroyBuffer(vkDev, vertexBuffer, nullptr);
+      vkFreeMemory(vkDev, vertexBufferMemory, nullptr);
 
-  vkDestroyBuffer(vkDev, indexBuffer, nullptr);
-  vkFreeMemory(vkDev, indexBufferMemory, nullptr);
+      vkDestroyBuffer(vkDev, indexBuffer, nullptr);
+      vkFreeMemory(vkDev, indexBufferMemory, nullptr);
 
-  vulkanSync.reset();
-  vulkanCommands.reset();
-  vulkanPipeline.reset();
-  vulkanDescriptors.reset();
-  vulkanRenderPass.reset();
-  vulkanSwapChain.reset();
+      vulkanSync.reset();
+      vulkanCommands.reset();
+      vulkanPipeline.reset();
+      vulkanDescriptors.reset();
+      vulkanRenderPass.reset();
+      vulkanSwapChain.reset();
 
-  vulkanDevice.reset();
-  vulkanInstance.reset();
-}
+      vulkanDevice.reset();
+      vulkanInstance.reset();
+      fpsCounter.reset();
+    }
 
 void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, uint32_t currentFrame) {
   VkCommandBufferBeginInfo beginInfo{};
@@ -174,6 +193,18 @@ void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, uin
 }
 
     void drawFrame() {
+      // Update camera position based on path
+      updateCamera();
+
+      // Update FPS counter
+      fpsCounter->update();
+
+      // Update window title with FPS every second
+      if (frameCount % 60 == 0) {
+        vulkanWindow->updateTitle(fpsCounter->getFPS());
+      }
+      frameCount++;
+
       vkWaitForFences(vulkanDevice->getDevice(), 1, vulkanSync->getInFlightFence(currentFrame), VK_TRUE, UINT64_MAX);
 
       uint32_t imageIndex;
@@ -191,7 +222,9 @@ void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, uin
       } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
         throw std::runtime_error("failed to acquire swap chain image!");
       }
-      vulkanDescriptors->updateUniformBuffer(currentFrame);
+
+      // Pass camera position to the descriptor for uniform buffer update
+      vulkanDescriptors->updateUniformBuffer(currentFrame, cameraPosition);
       vkResetFences(vulkanDevice->getDevice(), 1, vulkanSync->getInFlightFence(currentFrame));
 
       vkResetCommandBuffer(vulkanCommands->getCommandBuffers()[currentFrame], /*VkCommandBufferResetFlagBits*/ 0);
@@ -273,6 +306,37 @@ void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, uin
 
     VkDevice getDevice() const { return vulkanDevice->getDevice(); }
 
+    void updateCamera() {
+      auto currentTime = std::chrono::high_resolution_clock::now();
+      float time = std::chrono::duration<float>(currentTime - startTime).count();
+
+      // Loop the path animation if needed
+      float pathDuration = cameraPath.getTotalDuration();
+      if (pathDuration > 0) {
+        time = fmod(time, pathDuration);
+      }
+
+      if (vulkanWindow->followPath) {
+        // Get camera position and orientation from path
+        auto [position, rotation] = cameraPath.getCurrentPosition(time);
+
+        // Extract euler angles from quaternion for backward compatibility
+        glm::vec3 eulerAngles = glm::eulerAngles(rotation);
+
+        // Update camera angles based on the path and offset from mouse dragging
+        vulkanWindow->cameraAngleX = eulerAngles.y + vulkanWindow->cameraRotationOffsetX;
+        vulkanWindow->cameraAngleY = eulerAngles.x + vulkanWindow->cameraRotationOffsetY + glm::half_pi<float>();
+
+        // Update the camera position based on the path
+        cameraPosition = position;
+      }
+
+      // Debug output (uncomment if needed)
+      // std::cout << "Camera Position: (" << cameraPosition.x << ", " << cameraPosition.y << ", " << cameraPosition.z << ")\n";
+      // std::cout << "Camera Angles: (" << vulkanWindow->cameraAngleX << ", " << vulkanWindow->cameraAngleY << ")\n";
+      // std::cout << "Rotation Offsets: (" << vulkanWindow->cameraRotationOffsetX << ", " << vulkanWindow->cameraRotationOffsetY << ")\n";
+    }
+
   private:
     std::unique_ptr<VulkanInstance> vulkanInstance;
     std::shared_ptr<VulkanDevice> vulkanDevice;
@@ -283,23 +347,36 @@ void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, uin
     std::unique_ptr<VulkanCommands> vulkanCommands;
     std::unique_ptr<VulkanSync> vulkanSync;
     std::shared_ptr<VulkanWindow> vulkanWindow;
+    std::unique_ptr<FPSCounter> fpsCounter;
 
-    static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
-    uint32_t currentFrame = 0;
-    bool framebufferResized = false;
+  static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
+  uint32_t currentFrame = 0;
+  bool framebufferResized = false;
 
-    uint32_t width = 800;
-    uint32_t height = 600;
+  uint32_t width = 800;
+  uint32_t height = 600;
 
-    // Model data
-    std::vector<Vertex> vertices;
-    std::vector<uint16_t> indices;
+  // Model data
+  std::vector<Vertex> vertices;
+  std::vector<uint16_t> indices;
+
+    // Camera position in world space
+    glm::vec3 cameraPosition = glm::vec3(0.0f, 5.0f, 20.0f);
+
+    // Camera path
+    CameraPath cameraPath;
+    std::chrono::time_point<std::chrono::high_resolution_clock> startTime;
+
+    // Rendering resources
     VkBuffer vertexBuffer = VK_NULL_HANDLE;
     VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
     VkBuffer indexBuffer = VK_NULL_HANDLE;
     VkDeviceMemory indexBufferMemory = VK_NULL_HANDLE;
 
-    void loadModel(const std::string& modelPath) {
+    uint32_t frameCount = 0;
+
+    // Methods for model loading and rendering (implementations not shown here)
+void loadModel(const std::string& modelPath) {
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
     std::vector<tinyobj::material_t> materials;
