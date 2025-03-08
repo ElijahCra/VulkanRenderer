@@ -76,33 +76,33 @@ class VulkanDescriptors {
 
     VkDevice device() const { return devicePtr->getDevice(); }
 
-    // Internal method that handles actual uniform buffer updates
   void updateUniformBufferWithPosition(size_t currentFrame, const glm::vec3& cameraPos) {
       UniformBufferObject ubo{};
 
-      // Apply a rotation to the model to convert from Z-up to Y-up
-      ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+      // No model rotation needed when using Z as up vector for everything
+      ubo.model = glm::mat4(1.0f);
 
       // Use the camera angles from the window, which include rotation offsets
       float theta = windowPtr->cameraAngleX; // Azimuthal angle
       float phi = windowPtr->cameraAngleY;   // Polar angle
 
-      // Calculate look-at point based on camera angles
+      // Calculate look direction for Z-up coordinate system
       glm::vec3 lookDirection;
       lookDirection.x = sin(phi) * sin(theta);
-      lookDirection.y = cos(phi);
-      lookDirection.z = sin(phi) * cos(theta);
+      lookDirection.y = sin(phi) * cos(theta);
+      lookDirection.z = cos(phi);  // Z is up, so cosine of polar angle gives Z component
 
       // Calculate look-at point by adding the direction vector to camera position
       glm::vec3 lookAtPoint = cameraPos + lookDirection;
 
-      // Choose an up vector that's not parallel to the look direction
+      // Choose Z as the up vector for lookAt, but handle the case when looking straight up/down
       glm::vec3 upVector;
       if (std::abs(cos(phi)) > 0.99f) {
         // If looking almost straight up or down, use a different up vector
-        upVector = glm::vec3(0.0f, 0.0f, 1.0f);
-      } else {
+        // to prevent singularity
         upVector = glm::vec3(0.0f, 1.0f, 0.0f);
+      } else {
+        upVector = glm::vec3(0.0f, 0.0f, 1.0f);  // Z is up
       }
 
       std::cout << "x: " << cameraPos.x << "y: " << cameraPos.y <<"z: " << cameraPos.z << std::endl;

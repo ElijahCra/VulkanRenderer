@@ -44,7 +44,7 @@ class VulkanWindow {
       if (fov < 1) fov = 1.0f;
     }
 
-    void handleKeyInput(int key, int action) {
+  void handleKeyInput(int key, int action) {
       if (action == GLFW_PRESS || action == GLFW_REPEAT) {
         constexpr float angleIncrement = 0.1f;
 
@@ -59,9 +59,9 @@ class VulkanWindow {
           cameraAngleY -= angleIncrement;
           if (cameraAngleY < 0.01f) cameraAngleY = 0.01f;
         } else if (key == GLFW_KEY_SPACE) {
-          followPath = !followPath; // Toggle path following
+          followPath = !followPath;
         } else if (key == GLFW_KEY_R) {
-          resetCamera(); // Reset camera to default
+          resetCamera();
         }
       }
     }
@@ -86,27 +86,23 @@ class VulkanWindow {
         // Apply rotation offset (adjust sensitivity as needed)
         const float sensitivity = 0.005f;
 
-        // Changed the direction to make mouse movement more intuitive
+        // Adjust for Z-up system
         cameraRotationOffsetX -= dx * sensitivity;
         cameraRotationOffsetY -= dy * sensitivity;
 
         // Clamp vertical rotation to avoid gimbal lock
-        // Extended the range slightly to allow more freedom of movement
         cameraRotationOffsetY = glm::clamp(cameraRotationOffsetY,
-                                           -glm::half_pi<float>() + 0.1f,
-                                           glm::half_pi<float>() - 0.1f);
+                                          -glm::half_pi<float>() + 0.1f,
+                                          glm::half_pi<float>() - 0.1f);
 
         lastMouseX = xpos;
         lastMouseY = ypos;
-
-        // Debug output (uncomment if needed)
-        // std::cout << "Rotation Offsets: (" << cameraRotationOffsetX << ", " << cameraRotationOffsetY << ")\n";
       }
     }
 
   void resetCamera() {
       cameraAngleX = 0.0f;
-      cameraAngleY = glm::radians(90.0f);
+      cameraAngleY = glm::radians(90.0f);  // 90 degrees for looking horizontally in Z-up system
       cameraRotationOffsetX = 0.0f;
       cameraRotationOffsetY = 0.0f;
       radius = 20.0f;

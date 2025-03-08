@@ -125,83 +125,97 @@ public:
         return totalTime;
     }
 
-    // Create a default circular path around the origin
-  static CameraPath createDefaultPath() {
-      CameraPath path;
+static CameraPath createDefaultPath() {
+    CameraPath path;
 
-      // Create a circular path around the origin
-      const int numPoints = 8;
-      const float radius = 15.0f;
-      const float height = 5.0f;
-      const float speed = 2.0f;
+    // Create a circular path around the origin
+    const int numPoints = 8;
+    const float radius = 15.0f;
+    const float height = 5.0f;  // Height along Z axis
+    const float speed = 2.0f;
 
-      for (int i = 0; i < numPoints; i++) {
+    for (int i = 0; i < numPoints; i++) {
         float angle = (float)i / numPoints * 2.0f * glm::pi<float>();
+
+        // Position using Z as up
         glm::vec3 position(
-                radius * std::cos(angle),
-                radius * std::sin(angle),
-                -height
+            radius * std::cos(angle),
+            radius * std::sin(angle),
+            height  // Z is up, so height is applied to Z
         );
 
-        // Calculate rotation to look at the center
-            glm::vec3 direction = glm::normalize(-position);
-            glm::vec3 up(0.0f, 1.0f, 0.0f);
-        glm::vec3 right = glm::normalize(glm::cross(up, direction));
-        up = glm::cross(direction, right);
+        // Calculate rotation to look at the center with Z-up orientation
+        glm::vec3 direction = glm::normalize(glm::vec3(0, 0, 0) - position);
+        glm::vec3 up(0.0f, 0.0f, 1.0f);  // Z is up
+
+        // Ensure direction is not parallel to up
+        if (std::abs(glm::dot(direction, up)) > 0.99f) {
+            up = glm::vec3(0.0f, 1.0f, 0.0f);  // Use Y as up if looking straight up/down
+        }
+
+        glm::vec3 right = glm::normalize(glm::cross(direction, up));
+        up = glm::normalize(glm::cross(right, direction));
 
         // Create rotation matrix and convert to quaternion
-        glm::mat3 rotMatrix(right, up, direction);
+        glm::mat3 rotMatrix(right, up, -direction);  // Negate direction for lookAt convention
         glm::quat rotation = glm::quat_cast(rotMatrix);
 
         path.addPoint(position, rotation, speed);
-      }
-
-      return path;
     }
 
-    // Create a more complex circular path with varying heights and speeds
-    static CameraPath createComplexPath() {
-        CameraPath path;
+    return path;
+}
 
-        // Create a figure-8 path around the origin
-        const int numPoints = 16;
-        const float radius = 20.0f;
-        const float heightVariation = 8.0f;
-        const float baseHeight = 10.0f;
+// Updated complex path creation in CameraPath.cpp with Z-up orientation
+static CameraPath createComplexPath() {
+    CameraPath path;
 
-        for (int i = 0; i < numPoints; i++) {
-            float angle = (float)i / numPoints * 2.0f * glm::pi<float>();
+    // Create a figure-8 path around the origin
+    const int numPoints = 16;
+    const float radius = 20.0f;
+    const float heightVariation = 8.0f;
+    const float baseHeight = 10.0f;
 
-            // Figure-8 pattern
-            float x = radius * std::cos(angle);
-            float y = radius * std::sin(angle) * std::cos(angle);
+    for (int i = 0; i < numPoints; i++) {
+        float angle = (float)i / numPoints * 2.0f * glm::pi<float>();
 
-            // Varying height
-            float height = baseHeight + heightVariation * std::sin(angle * 2.0f);
+        // Figure-8 pattern on XY plane
+        float x = radius * std::cos(angle);
+        float y = radius * std::sin(angle) * std::cos(angle);
 
-            // Varying speed - slower at peaks
-            float speed = 2.0f + 1.0f * std::cos(angle * 2.0f);
+        // Varying height on Z axis
+        float z = baseHeight + heightVariation * std::sin(angle * 2.0f);
 
-            // Add dwell time at certain points
-            float dwell = (i % 4 == 0) ? 1.0f : 0.0f;
+        // Varying speed - slower at peaks
+        float speed = 2.0f + 1.0f * std::cos(angle * 2.0f);
 
-            glm::vec3 position(x, height, y);
+        // Add dwell time at certain points
+        float dwell = (i % 4 == 0) ? 1.0f : 0.0f;
 
-            // Calculate rotation to look at the center
-            glm::vec3 direction = glm::normalize(-position);
-            glm::vec3 up(0.0f, 1.0f, 0.0f);
-            glm::vec3 right = glm::normalize(glm::cross(up, direction));
-            up = glm::cross(direction, right);
+        // Use Z as up
+        glm::vec3 position(x, y, z);
 
-            // Create rotation matrix and convert to quaternion
-            glm::mat3 rotMatrix(right, up, direction);
-            glm::quat rotation = glm::quat_cast(rotMatrix);
+        // Calculate rotation to look at the center with Z-up orientation
+        glm::vec3 direction = glm::normalize(glm::vec3(0, 0, baseHeight) - position);
+        glm::vec3 up(0.0f, 0.0f, 1.0f);  // Z is up
 
-            path.addPoint(position, rotation, speed, dwell);
+        // Ensure direction is not parallel to up
+        if (std::abs(glm::dot(direction, up)) > 0.99f) {
+            up = glm::vec3(0.0f, 1.0f, 0.0f);  // Use Y as up if looking straight up/down
         }
 
-        return path;
+        glm::vec3 right = glm::normalize(glm::cross(direction, up));
+        up = glm::normalize(glm::cross(right, direction));
+
+        // Create rotation matrix and convert to quaternion
+        glm::mat3 rotMatrix(right, up, -direction);  // Negate direction for lookAt convention
+        glm::quat rotation = glm::quat_cast(rotMatrix);
+
+        path.addPoint(position, rotation, speed, dwell);
     }
+
+    return path;
+}
 
 // Make points public so it can be accessed for initialization
 public:
