@@ -418,6 +418,13 @@ void loadModel(const std::string& modelPath) {
                 vertex.color = {0.8f, 0.8f, 0.8f};
             }
 
+          // Debug output for first and last vertices
+          if (vertices.empty()) {
+            std::cout << "First vertex - x:" << vertex.pos.x << " y:" << vertex.pos.y << " z:" << vertex.pos.z << std::endl;
+          } else if (vertices.size() == 9999) {
+            std::cout << "Sample vertex - x:" << vertex.pos.x << " y:" << vertex.pos.y << " z:" << vertex.pos.z << std::endl;
+          }
+
             // Add to vertices and indices
             if (uniqueVertices.count(vertex) == 0) {
                 uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());

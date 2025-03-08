@@ -77,9 +77,11 @@ class VulkanDescriptors {
     VkDevice device() const { return devicePtr->getDevice(); }
 
     // Internal method that handles actual uniform buffer updates
-    void updateUniformBufferWithPosition(size_t currentFrame, const glm::vec3& cameraPos) {
+  void updateUniformBufferWithPosition(size_t currentFrame, const glm::vec3& cameraPos) {
       UniformBufferObject ubo{};
-      ubo.model = glm::mat4(1.0f); // No rotation
+
+      // Apply a rotation to the model to convert from Z-up to Y-up
+      ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 
       // Use the camera angles from the window, which include rotation offsets
       float theta = windowPtr->cameraAngleX; // Azimuthal angle
@@ -94,11 +96,22 @@ class VulkanDescriptors {
       // Calculate look-at point by adding the direction vector to camera position
       glm::vec3 lookAtPoint = cameraPos + lookDirection;
 
-      // Build the view matrix with the calculated look-at point
+      // Choose an up vector that's not parallel to the look direction
+      glm::vec3 upVector;
+      if (std::abs(cos(phi)) > 0.99f) {
+        // If looking almost straight up or down, use a different up vector
+        upVector = glm::vec3(0.0f, 0.0f, 1.0f);
+      } else {
+        upVector = glm::vec3(0.0f, 1.0f, 0.0f);
+      }
+
+      std::cout << "x: " << cameraPos.x << "y: " << cameraPos.y <<"z: " << cameraPos.z << std::endl;
+
+      // Build the view matrix with the calculated look-at point and appropriate up vector
       ubo.view = glm::lookAt(
         cameraPos,     // Camera position from path
         lookAtPoint,   // Look at point calculated from camera angles
-        glm::vec3(0.0f, 1.0f, 0.0f)   // Up vector
+        upVector       // Dynamically chosen up vector
       );
 
       // Perspective projection matrix

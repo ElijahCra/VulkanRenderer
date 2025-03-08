@@ -126,37 +126,37 @@ public:
     }
 
     // Create a default circular path around the origin
-    static CameraPath createDefaultPath() {
-        CameraPath path;
+  static CameraPath createDefaultPath() {
+      CameraPath path;
 
-        // Create a circular path around the origin
-        const int numPoints = 8;
-        const float radius = 15.0f;
-        const float height = 5.0f;
-        const float speed = 2.0f;
+      // Create a circular path around the origin
+      const int numPoints = 8;
+      const float radius = 15.0f;
+      const float height = 5.0f;
+      const float speed = 2.0f;
 
-        for (int i = 0; i < numPoints; i++) {
-            float angle = (float)i / numPoints * 2.0f * glm::pi<float>();
-            glm::vec3 position(
+      for (int i = 0; i < numPoints; i++) {
+        float angle = (float)i / numPoints * 2.0f * glm::pi<float>();
+        glm::vec3 position(
                 radius * std::cos(angle),
                 radius * std::sin(angle),
                 -height
-            );
+        );
 
-            // Calculate rotation to look at the center
+        // Calculate rotation to look at the center
             glm::vec3 direction = glm::normalize(-position);
             glm::vec3 up(0.0f, 1.0f, 0.0f);
-            glm::vec3 right = glm::normalize(glm::cross(up, direction));
-            up = glm::cross(direction, right);
+        glm::vec3 right = glm::normalize(glm::cross(up, direction));
+        up = glm::cross(direction, right);
 
-            // Create rotation matrix and convert to quaternion
-            glm::mat3 rotMatrix(right, up, direction);
-            glm::quat rotation = glm::quat_cast(rotMatrix);
+        // Create rotation matrix and convert to quaternion
+        glm::mat3 rotMatrix(right, up, direction);
+        glm::quat rotation = glm::quat_cast(rotMatrix);
 
-            path.addPoint(position, rotation, speed);
-        }
+        path.addPoint(position, rotation, speed);
+      }
 
-        return path;
+      return path;
     }
 
     // Create a more complex circular path with varying heights and speeds
