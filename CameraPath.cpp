@@ -131,7 +131,7 @@ static CameraPath createDefaultPath() {
     // Create a circular path around the origin
     const int numPoints = 8;
     const float radius = 15.0f;
-    const float height = 5.0f;  // Height along Z axis
+    const float height = 10.0f;  // Height along Z axis
     const float speed = 2.0f;
 
     for (int i = 0; i < numPoints; i++) {
@@ -162,6 +162,9 @@ static CameraPath createDefaultPath() {
 
         path.addPoint(position, rotation, speed);
     }
+      for (auto pat : path.points) {
+        std::cout << "x"<< pat.position.x << "y"<< pat.position.y <<"z"<<pat.position.z << std::endl;
+      }
 
     return path;
 }

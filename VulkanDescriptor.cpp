@@ -76,61 +76,67 @@ class VulkanDescriptors {
 
     VkDevice device() const { return devicePtr->getDevice(); }
 
-  void updateUniformBufferWithPosition(size_t currentFrame, const glm::vec3& cameraPos) {
-      UniformBufferObject ubo{};
+void updateUniformBufferWithPosition(size_t currentFrame, const glm::vec3& cameraPos) {
+  UniformBufferObject ubo{};
 
-      // No model rotation needed when using Z as up vector for everything
-      ubo.model = glm::mat4(1.0f);
+  // No model rotation needed when using Z as up vector consistently
+  ubo.model = glm::mat4(1.0f);
 
-      // Use the camera angles from the window, which include rotation offsets
-      float theta = windowPtr->cameraAngleX; // Azimuthal angle
-      float phi = windowPtr->cameraAngleY;   // Polar angle
+  // Use the camera angles from the window, which include rotation offsets
+  float theta = windowPtr->cameraAngleX; // Azimuthal angle
+  float phi = windowPtr->cameraAngleY;   // Polar angle
 
-      // Calculate look direction for Z-up coordinate system
-      glm::vec3 lookDirection;
-      lookDirection.x = sin(phi) * sin(theta);
-      lookDirection.y = sin(phi) * cos(theta);
-      lookDirection.z = cos(phi);  // Z is up, so cosine of polar angle gives Z component
+  // Clamp phi to prevent the flip at poles
+  // Allow looking almost straight up/down but not completely
+  const float epsilon = 0.001f;
+  phi = glm::clamp(phi, epsilon, glm::pi<float>() - epsilon);
 
-      // Calculate look-at point by adding the direction vector to camera position
-      glm::vec3 lookAtPoint = cameraPos + lookDirection;
+  // Calculate look direction for Z-up coordinate system
+  glm::vec3 lookDirection;
+  lookDirection.x = sin(phi) * sin(theta);
+  lookDirection.y = sin(phi) * cos(theta);
+  lookDirection.z = cos(phi);  // Z is up, so cosine of polar angle gives Z component
 
-      // Choose Z as the up vector for lookAt, but handle the case when looking straight up/down
-      glm::vec3 upVector;
-      if (std::abs(cos(phi)) > 0.99f) {
-        // If looking almost straight up or down, use a different up vector
-        // to prevent singularity
-        upVector = glm::vec3(0.0f, 1.0f, 0.0f);
-      } else {
-        upVector = glm::vec3(0.0f, 0.0f, 1.0f);  // Z is up
-      }
+  // Calculate look-at point by adding the direction vector to camera position
+  glm::vec3 lookAtPoint = cameraPos + lookDirection;
 
-      std::cout << "x: " << cameraPos.x << "y: " << cameraPos.y <<"z: " << cameraPos.z << std::endl;
+  // For up vector, create a stable up vector based on the camera's local coordinate system
+  // This prevents flipping when crossing poles
+  glm::vec3 worldUp(0.0f, 0.0f, 1.0f);  // Z is world up
 
-      // Build the view matrix with the calculated look-at point and appropriate up vector
-      ubo.view = glm::lookAt(
-        cameraPos,     // Camera position from path
-        lookAtPoint,   // Look at point calculated from camera angles
-        upVector       // Dynamically chosen up vector
-      );
+  // Using a stable reference frame for lookAt
+  glm::vec3 forward = glm::normalize(lookAtPoint - cameraPos);
+  glm::vec3 right = glm::normalize(glm::cross(forward, worldUp));
 
-      // Perspective projection matrix
-      ubo.proj = glm::perspective(
-        glm::radians(windowPtr->fov),
-        swapChainPtr->getExtent().width / (float)swapChainPtr->getExtent().height,
-        0.1f,    // Near plane
-        500.0f   // Far plane
-      );
+  // If we're looking almost straight up or down, right might be near-zero
+  // In that case, use a fixed reference direction
+  if (glm::length(right) < 0.01f) {
+    right = glm::vec3(sin(theta + glm::half_pi<float>()), cos(theta + glm::half_pi<float>()), 0.0f);
+  }
 
-      // Flip Y coordinate for Vulkan coordinate system
-      ubo.proj[1][1] *= -1;
+  // Recalculate up based on right and forward to ensure orthogonality
+  glm::vec3 up = glm::normalize(glm::cross(right, forward));
 
-      // Update the uniform buffer
-      void *data;
-      vkMapMemory(devicePtr->getDevice(), uniformBuffersMemory[currentFrame], 0, sizeof(ubo), 0, &data);
-      memcpy(data, &ubo, sizeof(ubo));
-      vkUnmapMemory(devicePtr->getDevice(), uniformBuffersMemory[currentFrame]);
-    }
+  // Build the view matrix using our computed vectors
+  ubo.view = glm::lookAt(cameraPos, lookAtPoint, up);
+
+  // Perspective projection matrix
+  ubo.proj = glm::perspective(
+    glm::radians(windowPtr->fov),
+    swapChainPtr->getExtent().width / (float)swapChainPtr->getExtent().height,
+    0.1f,
+    500.0f
+  );
+
+  // Flip Y coordinate for Vulkan coordinate system
+  ubo.proj[1][1] *= -1;
+
+  // Update the uniform buffer
+  void *data;
+  vkMapMemory(devicePtr->getDevice(), uniformBuffersMemory[currentFrame], 0, sizeof(ubo), 0, &data);
+  memcpy(data, &ubo, sizeof(ubo));
+  vkUnmapMemory(devicePtr->getDevice(), uniformBuffersMemory[currentFrame]);
+}
 
     void createDescriptorSetLayout() {
       VkDescriptorSetLayoutBinding uboLayoutBinding{};
