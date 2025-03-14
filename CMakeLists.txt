@@ -16,7 +16,10 @@ include_directories("/opt/homebrew/Cellar/glm/1.0.0/include/")
 find_package(glm CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME} glm::glm)
 
-include_directories("/opt/homebrew/Cellar/glfw/3.3.9/include/GLFW")
+if(WIN32)
+    set(glfw3_DIR "C:/Program Files (x86)/GLFW/lib/cmake/glfw3")
+elseif(APPLE)
+    set(glfw3_DIR "/opt/homebrew/Cellar/glfw/3.3.9/lib/cmake/glfw3")
+endif()
 find_package(glfw3 CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME} glfw)
-
